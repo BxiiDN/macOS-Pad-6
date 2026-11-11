@@ -5,8 +5,10 @@
 # Apple input stay on the runner and are removed at the end. Nothing here touches a device.
 #
 # Runs on workflow_dispatch, and on a push to board-migration-wip whose head commit message contains
-# "[kernel-build]", or "[kernel-prelink]" to also prelink (a dispatch needs the workflow on the default branch,
-# which main does not have yet).
+# "[kernel-build]", "[kernel-prelink]" to also prelink, or "[kernel-repro]" to also build the same source a second
+# time from scratch in the same place and compare the two kernels section by section (a dispatch needs the workflow
+# on the default branch, which main does not have yet). Every build also runs scripts/kernel_size_audit.py on the
+# link map (-Wl,-map in pipa_macos26_defconfig).
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 name: Kernel build (pipa, macOS 26.5)
 
@@ -45,7 +47,7 @@ jobs:
   kernel:
     if: >-
       github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]') ||
-      contains(github.event.head_commit.message, '[kernel-prelink]')
+      contains(github.event.head_commit.message, '[kernel-prelink]') || contains(github.event.head_commit.message, '[kernel-repro]')
     runs-on: macos-26
     timeout-minutes: 360
     steps:
@@ -123,6 +125,28 @@ jobs:
         if: always() && steps.kernel.outcome != 'skipped'
         run: python3 scripts/kernel_report.py --work "$UNIXNU/out" --json "$WORK/kernel-report.json"
 
+      - name: Size audit (sections, origins from the link map, strings by patch)
+        id: size
+        if: always() && steps.report.outcome == 'success'
+        run: |
+          python3 scripts/pipa_unixnu.py run --work "$WORK" -- status --json --os macos-26.5-25F71 > "$WORK/status.out"
+          python3 - <<'EOF'
+          import json, os
+          t = open(os.path.join(os.environ["WORK"], "status.out")).read()
+          order = json.loads(t[t.index("{"):])["patch_order"]
+          open(os.path.join(os.environ["WORK"], "patches.txt"), "w").write("\n".join(order) + "\n")
+          print(len(order), "patches")
+          EOF
+          native=$(find "$UNIXNU/out" -name 'mach.development.bcm2837.unstripped.noctf' -type f | head -n 1)
+          tree=${native%%/build/xnu/*}
+          map="$tree/build/kernel-link.map"
+          xnu=$(find "$UNIXNU/out/feeds" -maxdepth 1 -type d -name 'xnu-*' | head -n 1)
+          echo "kernel $native"; echo "map $map ($(wc -c < "$map") bytes)"; echo "xnu source $xnu"
+          python3 scripts/kernel_size_audit.py --kernel "$native" --map "$map" --patches "$WORK/patches.txt" \
+            --xnu-source "$xnu" --strip-prefix "$tree/.cache/xnu-work/" --strip-prefix "$tree/" --strip-prefix "$UNIXNU/" \
+            --json "$WORK/size-audit.json" --markdown "$WORK/size-audit.md" > /dev/null
+          cat "$WORK/size-audit.md"
+
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
         if: >-
@@ -150,11 +174,24 @@ jobs:
           ls "$(dirname "$kc")"
           for f in "$(dirname "$kc")"/*.json; do echo "== $f"; head -c 3000 "$f"; echo; done
 
+      - name: Reproducibility (same source, same place, second build from scratch)
+        id: repro
+        if: steps.report.outcome == 'success' && contains(github.event.head_commit.message, '[kernel-repro]')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mv "$UNIXNU/out/pipa" "$UNIXNU/out/pipa.first"
+          python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig pipa_macos26_defconfig
+          python3 scripts/pipa_unixnu.py run --work "$WORK" -- build kernel --skip-prelink -j "$(sysctl -n hw.ncpu)"
+          python3 scripts/kernel_report.py --work "$UNIXNU/out/pipa" --json "$WORK/kernel-report-2.json" > /dev/null
+          python3 scripts/kernel_report.py --compare "$WORK/kernel-report.json" "$WORK/kernel-report-2.json" --json "$WORK/repro.json"
+
       - name: Collect the text logs
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/public"
-          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json "$RUNNER_TEMP/public/" 2>/dev/null || true
+          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json \
+            "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os
           from pathlib import Path
@@ -187,6 +224,7 @@ jobs:
           REPORT: ${{ steps.report.outcome }}
           PRELINK: ${{ steps.prelink.outcome }}
           PRELINK_REPORT: ${{ steps.prelink_report.outcome }}
+          REPRO: ${{ steps.repro.outcome }}
         run: |
           {
             echo "## pipa kernel step (macOS 26.5, xnu-12377.121.6)"
@@ -197,8 +235,10 @@ jobs:
             echo "| linked kernel found and inspected | ${REPORT:-skipped} |"
             echo "| prelink with the 26.5 kernelcache | ${PRELINK:-skipped} |"
             echo "| kernel collection inspected | ${PRELINK_REPORT:-skipped} |"
+            echo "| second build compared | ${REPRO:-skipped} |"
             echo
-            if [ -f "$WORK/kernel-report.json" ]; then echo '```json'; head -c 4000 "$WORK/kernel-report.json"; echo; echo '```'; fi
+            if [ -f "$WORK/size-audit.md" ]; then echo; cat "$WORK/size-audit.md"; fi
+            if [ -f "$WORK/repro.json" ]; then echo; echo '```json'; head -c 4000 "$WORK/repro.json"; echo; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove Apple inputs and build outputs

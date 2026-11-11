@@ -23,3 +23,6 @@ CONFIG_XNU_DT_PANIC_REGION=y
 # UniXNU-sheng's macOS kernel.
 CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
 CONFIG_XNU_ARMVIRT_PLATFORM=n
+# The kernel link also writes ld64's link map (which object put each atom where), for scripts/kernel_size_audit.py.
+# It is an extra output file only; the linked kernel does not change.
+CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-map,{tree}/build/kernel-link.map"
