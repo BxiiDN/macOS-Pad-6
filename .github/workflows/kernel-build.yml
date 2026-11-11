@@ -156,8 +156,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- build prelink
 
-      - name: Prelink layout (where the native __TEXT could go; numbers only)
-        if: always() && steps.prelink.outcome == 'failure'
+      - name: Prelink layout (where the native __TEXT could go, and the margin; numbers only)
+        if: always() && (steps.prelink.outcome == 'failure' || steps.prelink.outcome == 'success')
         run: |
           kc=$(find "$UNIXNU/out/ipsw" -name 'kernelcache.decompressed' -type f | head -n 1)
           native=$(find "$UNIXNU/out" -name 'mach.development.bcm2837.unstripped.noctf' -type f | head -n 1)
@@ -176,7 +176,7 @@ jobs:
 
       - name: Reproducibility (same source, same place, second build from scratch)
         id: repro
-        if: steps.report.outcome == 'success' && contains(github.event.head_commit.message, '[kernel-repro]')
+        if: always() && steps.report.outcome == 'success' && contains(github.event.head_commit.message, '[kernel-repro]')
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |

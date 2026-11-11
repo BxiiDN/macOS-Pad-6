@@ -54,6 +54,9 @@ def main():
     need = next(s["size"] for s in native.segments if s["name"] == "__TEXT")
     kernel_text = [e for e in entries if e["bundle"] == "com.apple.kernel"]
     largest = max((b - a for a, b in holes), default=0)
+    page = 0x4000   # XnuPrelink's PAGE: the native __TEXT starts on a 16 KiB boundary inside the hole
+    usable = [(b - ((a + page - 1) & -page), a, b) for a, b in holes]
+    fit = max(usable, default=(0, 0, 0))
     report = {
         "prelink_text": {"va": hex(lo), "size": hex(root["size"])},
         "native_text_size": hex(need),
@@ -63,6 +66,9 @@ def main():
         "holes": [{"va": hex(a), "size": hex(b - a)} for a, b in holes],
         "largest_hole": hex(largest),
         "short_by": hex(max(0, need - largest)),
+        "largest_usable_after_alignment": hex(fit[0]),
+        "fits": fit[0] >= need,
+        "margin_bytes": fit[0] - need,
         "first_entries": [dict(e, va=hex(e["va"]), size=hex(e["size"])) for e in entries[:40]],
     }
     text = json.dumps(report, indent=2)
