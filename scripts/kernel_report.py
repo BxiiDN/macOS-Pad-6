@@ -12,6 +12,7 @@ Finds mach.development.bcm2837 (the linked native kernel) under the build output
   separately, so two builds can be compared part by part (--compare);
 - the kernel version strings and the debug-map (N_OSO) object timestamps, the usual sources of
   differences between two builds of the same source;
+- the chained-fixup imports by name (XnuPrelink accepts a native kernel with none);
 - the ARMv8.2 layer of devices/pipa, from the machine code: sleh_synchronous calls (BL or tail B)
   fge_xnu_handle (FGE), and ml_addrperm_pacga starts with the null-PAC body (orr x0, x0, #1;
   ret) instead of PACGA;
@@ -93,8 +94,34 @@ def parse(data):
         elif cmd in LINKEDIT_BLOBS:
             dataoff, datasize = struct.unpack_from("<II", data, offset + 8)
             out["blobs"][LINKEDIT_BLOBS[cmd]] = sha(data[dataoff:dataoff + datasize])
+            if cmd == 0x80000034:
+                out["chained_imports"] = chained_imports(data[dataoff:dataoff + datasize])
         offset += size
     return out
+
+
+def chained_imports(blob):
+    """Names of the imports of an LC_DYLD_CHAINED_FIXUPS blob (dyld_chained_fixups_header). A kernel that
+    XnuPrelink joins to a collection must have none ("Chained fixup imports are not supported")."""
+    if len(blob) < 28:
+        return []
+    _, _, imports_offset, symbols_offset, count, fmt, _ = struct.unpack_from("<IIIIIII", blob)
+    width = {1: 4, 2: 8, 3: 16}.get(fmt)
+    names = []
+    for i in range(count if width else 0):
+        at = imports_offset + width * i
+        if fmt == 3:
+            raw = struct.unpack_from("<Q", blob, at)[0]
+            ordinal, weak, name_off = raw & 0xffff, (raw >> 16) & 1, raw >> 32
+            ordinal = ordinal - 0x10000 if ordinal & 0x8000 else ordinal
+        else:
+            raw = struct.unpack_from("<I", blob, at)[0]
+            ordinal, weak, name_off = raw & 0xff, (raw >> 8) & 1, raw >> 9
+            ordinal = ordinal - 0x100 if ordinal & 0x80 else ordinal
+        end = blob.index(b"\0", symbols_offset + name_off)
+        names.append({"name": blob[symbols_offset + name_off:end].decode("utf-8", "replace"),
+                      "lib_ordinal": ordinal, "weak_import": bool(weak)})
+    return names
 
 
 def word_at(m, data, va):
@@ -158,6 +185,7 @@ def report_for(kernel, base):
                   "uuid": m["uuid"], "segments": segments, "linkedit": m["blobs"]},
         "version_strings": version,
         "debug_map": {"objects": len(m["oso"]), "nonzero_timestamps": sum(1 for _, t in m["oso"] if t)},
+        "chained_fixup_imports": m.get("chained_imports", []),
         "armv82_layer": {
             "symbols": {s: s in m["symbols"] for s in FGE_SYMBOLS},
             "sleh_synchronous_calls_fge_xnu_handle": calls(m, data, "_sleh_synchronous", "_fge_xnu_handle"),

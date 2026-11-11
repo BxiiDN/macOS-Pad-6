@@ -5,7 +5,10 @@ native_owner_root_accepted and native_owner_root_mount_device (macos-owner-root-
 expects the owner-root audit globals of offline-owner-root-binding-audit.patch, built only with XNU_OWNER_ROOT_AUDIT
 and a source storage driver) and native_exit_trace (macos-droidvm-k27-parity.patch, a board hook UniXNU-sheng's
 package defines). Without owner-root audit no root is accepted, so authenticated opens keep EAUTH as in unmodified
-XNU; the exit trace is a weak no-op a board archive can replace.
+XNU; the exit trace is a no-op. It is a plain (strong) definition: a weak one is bound through Mach-O weak
+lookup, which the linker writes as a chained-fixup import, and XnuPrelink accepts a kernel with no import
+(kernel-build.yml run 42991705340: "Chained fixup imports are not supported"). A board archive that provides
+the real trace replaces this definition.
 
 SPDX-License-Identifier: BSD-2-Clause-Patent
 
@@ -24,14 +27,14 @@ index 5bc65a1..d9f40e1 100644
 + *    and no device is the owner root, so an authenticated open the file system refuses stays refused (EAUTH), as in
 + *    unmodified XNU (macos-owner-root-authenticated-open.patch reads these two).
 + *  - exit() calls the board's native_exit_trace when one is linked (macos-droidvm-k27-parity.patch); this board has
-+ *    none yet, so a weak no-op stands in and a board archive can still provide the real one.
++ *    none yet, so a no-op stands in (not weak: that would be a chained-fixup import XnuPrelink refuses).
 + */
 +#if !(defined(XNU_OWNER_ROOT_AUDIT) && XNU_OWNER_ROOT_AUDIT)
 +volatile int native_owner_root_accepted = 0;
 +volatile dev_t native_owner_root_mount_device = NODEV;
 +#endif
 +void native_exit_trace(int pid, const char *name, int status);
-+__attribute__((weak)) void
++void
 +native_exit_trace(int pid, const char *name, int status)
 +{
 +	(void)pid;
