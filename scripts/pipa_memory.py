@@ -17,8 +17,17 @@ override) and for a few sizes around them, it runs:
     independent Python computation of the same ranges.
 MemoryWindow.h is compiled from the UniXNU submodule with the host C compiler through a small EFI shim.
 
+Then the kernel side (window-memory-excluded-ranges.patch, modelled in Python as kernel_table): XNU's own copy of the
+table (clipped, rounded to its 4 KiB page, joined), the first-range check against its boot allocations (no excluded
+range in the first max(span / 64, 32 MiB) behind the image), and that its excluded bytes equal the loader's (so
+hw.memsize = memSizeActual). The bootstrap tables (native-4k-bootstrap-capacity.patch, start.s): the pages the V=P
+and KVA block mappings take for the window at every 2 MiB slide, against the 16-page pool. The bounds UniXNU's ADT
+generator enforces (window size and step, 1..4096 table slots) and both reserve formulas are read from the sources.
+
 --check fails unless every configured window is placed, the macOS window's exclusions fit its table without
-merging, and the configured window does not exceed what the board notes say the 4 KiB bootstrap tables map.
+merging, the kernel accepts its table without a panic and counts the same bytes, every slide fits the bootstrap pool,
+the window spans no DRAM bank gap, the board's values are inside the sources' bounds, the reserve formulas agree, and
+the largest window the 4 KiB bootstrap pool maps at every base and slide is the 6 GiB board.toml states.
 
 SPDX-License-Identifier: BSD-2-Clause-Patent
 """
@@ -35,11 +44,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-HEADER = ROOT / "third_party/UniXNU/drivers/DarwinBoot/DarwinBootPkg/Driver/MemoryWindow.h"
+UNIXNU = ROOT / "third_party/UniXNU"
+HEADER = UNIXNU / "drivers/DarwinBoot/DarwinBootPkg/Driver/MemoryWindow.h"
 BOARD = ROOT / "devices/pipa/board.toml"
+# The kernel side, read as source each time (source_limits): the excluded-range patch of the board's chain, the native
+# 4 KiB bootstrap table patch, and UniXNU's ADT generator (window and table bounds).
+EXCLUDED_PATCH = UNIXNU / "profiles/os/macos-27.3-26C5035r/patches/xnu-12377/window-memory-excluded-ranges.patch"
+BOOTSTRAP_PATCH = UNIXNU / "patches/xnu-12377/native-4k-bootstrap-capacity.patch"
+DEVICETREE = UNIXNU / "scripts/unixnu/devicetree.py"
 MIB, GIB = 1 << 20, 1 << 30
 BLOCK = 2 * MIB
 BOOTSTRAP_MAX = 6 * GIB          # board.toml / UniXNU-sheng: the most the 4 KiB bootstrap tables map
+KERNEL_PAGE = 4096               # pipa_macos26_defconfig builds the native 4 KiB kernel (build-xnu-4k-baseline.sh)
+L2_REGION = 1 * GIB              # one 4 KiB-granule L2 table maps 512 x 2 MiB blocks
+BOOTSTRAP_PAGES = 16             # native-4k-bootstrap-capacity.patch: BOOTSTRAP_TABLE_SIZE = ARM_PGBYTES * 16
 # DRAM banks of the reference tablet (AN: UniXNU-pipa, read in Android; docs/hardware-pipa.md).
 BANKS = [(0x80000000, 0x37700000), (0xc0000000, 0x1c0000000), (0x800000000, 0x200000000)]
 # no-map reserved-memory of mainline sm8250-xiaomi-pipa.dts + sm8250.dtsi (docs/evidence/hardware/pipa-mainline-inventory.md).
@@ -206,6 +224,144 @@ def window_without_table(descriptors, size):
     return 0
 
 
+# The kernel side: what XNU does with the table (window-memory-excluded-ranges.patch, arm_vm_init.c) ------------------
+
+def kernel_reserve(span):
+    """ARM_VM_EXCLUDED_RESERVE: the room behind the loaded image that must hold no excluded range."""
+    return max(span // 64, 32 * MIB)
+
+
+def kernel_table(pairs, phys_base, mem_size, top_of_kernel_data, page=KERNEL_PAGE):
+    """arm_vm_excluded_init, in Python: drop empty slots, clip to the span, round outward to the kernel's page, insert
+    sorted, join neighbours that touch, then the first-range check against the boot allocations. Returns the table,
+    its bytes (arm_vm_excluded_bytes over the span), the panic message the kernel would print (None if none), and the
+    avail_start after the table (the kernel keeps the table in the page(s) at the old avail_start)."""
+    span_end = phys_base + mem_size
+    table = []
+    for base, size in pairs:
+        if size == 0:
+            continue
+        end = base + size
+        if end < base or end > span_end:
+            end = span_end
+        base = max(base & ~(page - 1), phys_base)
+        end = (end + page - 1) & ~(page - 1)
+        if base >= end:
+            continue
+        table.append([base, end])
+        table.sort()
+        merged = []
+        for b, e in table:
+            if merged and merged[-1][1] >= b:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([b, e])
+        table = merged
+    avail = (top_of_kernel_data + page - 1) & ~(page - 1)
+    out = {"table": [tuple(r) for r in table], "panic": None, "avail_start": avail,
+           "bytes": sum(min(e, span_end) - max(b, phys_base) for b, e in table)}
+    if not table:
+        return out
+    if table[0][0] < top_of_kernel_data + kernel_reserve(mem_size):
+        out["panic"] = (f"excluded memory at {table[0][0]:#x} is inside the kernel's boot allocations "
+                        f"({top_of_kernel_data:#x} + {kernel_reserve(mem_size):#x})")
+    out["avail_start"] = (avail + 16 * len(table) + page - 1) & ~(page - 1)
+    return out
+
+
+def l2_tables(vbase, length):
+    """create_bootstrap_mapping (start.s): one L2 table per 1 GiB region the virtual range of the 2 MiB blocks
+    touches (the first one partly used from vbase's L2 index)."""
+    blocks = length >> 21
+    if blocks == 0:
+        return 1
+    return ((vbase + blocks * BLOCK - 1) // L2_REGION) - (vbase // L2_REGION) + 1
+
+
+def bootstrap_pages(phys_base, length, virt_offset):
+    """Pages of bootstrap_pagetables the V=P and the KVA mapping use: two L1 roots and the L2 tables of each.
+    virt_offset is the kernel's virtual base modulo 1 GiB (KASLR moves it in 2 MiB steps)."""
+    return 2 + l2_tables(phys_base, length) + l2_tables(virt_offset, length)
+
+
+def bootstrap_worst(phys_base, length):
+    """The most pages any 2 MiB-aligned virtual slide needs, and the offsets that need them."""
+    counts = {off: bootstrap_pages(phys_base, length, off) for off in range(0, L2_REGION, BLOCK)}
+    worst = max(counts.values())
+    return worst, sum(1 for c in counts.values() if c == worst)
+
+
+def max_bootstrap_window(phys_base=None, step=256 * MIB, limit=8 * GIB):
+    """The largest window (in `step`s) every slide can map with BOOTSTRAP_PAGES; with phys_base None, also every
+    2 MiB-aligned physical base."""
+    best = 0
+    for size in range(step, limit + 1, step):
+        bases = [phys_base] if phys_base is not None else range(0, L2_REGION, BLOCK)
+        if all(bootstrap_worst(b, size)[0] <= BOOTSTRAP_PAGES for b in bases):
+            best = size
+        else:
+            break
+    return best
+
+
+def bank_gaps(base, size, banks=BANKS):
+    """Address ranges of [base, base + size) that no DRAM bank backs: the bootstrap block mappings cover the whole
+    span as normal memory until arm_vm_init replaces them, so a gap there is mapped for that time."""
+    out, cursor = [], base
+    for b, s in sorted(banks):
+        b0, b1 = max(b, base), min(b + s, base + size)
+        if b0 >= b1:
+            continue
+        if b0 > cursor:
+            out.append((cursor, b0 - cursor))
+        cursor = max(cursor, b1)
+    if cursor < base + size:
+        out.append((cursor, base + size - cursor))
+    return out
+
+
+def source_limits():
+    """The bounds the sources state, read each time: UniXNU's ADT generator (window size and step, table slots),
+    the reserve formula of the kernel patch and of MemoryWindow.h, and the bootstrap pool of the 4 KiB patch.
+    Missing text is an error, not a default."""
+    import re
+    out, errors = {}, []
+
+    def find(path, pattern, name):
+        m = re.search(pattern, Path(path).read_text()) if Path(path).is_file() else None
+        if not m:
+            errors.append(f"{Path(path).name}: {name} not found")
+        return m
+    m = find(DEVICETREE, r"if not (0x[0-9a-f]+) <= size <= (0x[0-9a-f]+) or size % (0x[0-9a-f]+):", "owned_memory_size bounds")
+    if m:
+        out["window_min"], out["window_max"], out["window_step"] = (int(g, 16) for g in m.groups())
+    m = find(DEVICETREE, r"if not (\d+) <= slots <= (\d+):\s*\n\s*raise Error\('Owned memory excluded ranges", "table bounds")
+    if m:
+        out["slots_min"], out["slots_max"] = int(m.group(1)), int(m.group(2))
+    m = find(EXCLUDED_PATCH, r"#define ARM_VM_EXCLUDED_RESERVE\(span\) MAX\(\(span\) / (\d+), \(uint64_t\)(\d+) \* 1024 \* 1024\)",
+             "ARM_VM_EXCLUDED_RESERVE")
+    if m:
+        out["kernel_reserve"] = (int(m.group(1)), int(m.group(2)) * MIB)
+    m = find(HEADER, r"#define DARWIN_WINDOW_RESERVE\(Size\)\s+\(\(\(\(Size\) / (\d+)\) > (0x[0-9a-fA-F]+)ULL\)", "DARWIN_WINDOW_RESERVE")
+    if m:
+        out["loader_reserve"] = (int(m.group(1)), int(m.group(2), 16))
+    m = find(BOOTSTRAP_PATCH, r"\+#define BOOTSTRAP_TABLE_SIZE \(ARM_PGBYTES \* (\d+)\)", "BOOTSTRAP_TABLE_SIZE")
+    if m:
+        out["bootstrap_pages"] = int(m.group(1))
+    m = find(EXCLUDED_PATCH, r"if \(table\[0\]\.base < args->topOfKernelData \+ ARM_VM_EXCLUDED_RESERVE\(mem_size\)\)",
+             "first-range check")
+    out["first_range_check"] = bool(m)
+    return out, errors
+
+
+def kernel_view(row, size, page=KERNEL_PAGE):
+    """What the kernel makes of a placed window's table: its own table, bytes, and whether it would panic. The
+    loaded image is IMAGE_ESTIMATE bytes from the window base (the loader's head is that plus its reserve)."""
+    k = kernel_table(row["exclusions"], row["base"], size, row["base"] + IMAGE_ESTIMATE, page)
+    return {"ranges": len(k["table"]), "bytes": k["bytes"], "panic": k["panic"],
+            "table_bytes": 16 * len(k["table"]), "memsize_agrees": k["bytes"] == row.get("excluded", 0)}
+
+
 # Scenarios ----------------------------------------------------------------------------------------------------------
 
 def board_windows(board=BOARD):
@@ -244,6 +400,8 @@ def evaluate(win, descriptors, size, table):
     row.update(exclusions=pairs, excluded=excluded, count=count, reference=len(ref), merged=len(ref) > table,
                agrees=(pairs == ref) if len(ref) <= table else excluded >= sum(s for _, s in ref),
                usable_check=win.usable(blob, base, size) == usable == size - sum(s for _, s in ref))
+    row["kernel"] = kernel_view(row, size)
+    row["bank_gaps"] = bank_gaps(base, size)
     return row
 
 
@@ -286,7 +444,7 @@ def robustness(win, descriptors, size, table, trials=200, max_holes=24, seed=26)
     import random
     rng = random.Random(seed)
     stats = {"trials": trials, "single_run_placed": 0, "table_placed": 0, "table_merged": 0, "disagreements": 0,
-             "table_min_usable": None, "table_max_ranges": 0}
+             "table_min_usable": None, "table_max_ranges": 0, "kernel_panics": 0, "kernel_disagreements": 0}
     for _ in range(trials):
         d = perturbed(descriptors, rng.randint(1, max_holes), rng)
         one = evaluate(win, d, size, 0)
@@ -297,6 +455,8 @@ def robustness(win, descriptors, size, table, trials=200, max_holes=24, seed=26)
             stats["table_merged"] += many["merged"]
             stats["table_max_ranges"] = max(stats["table_max_ranges"], many["reference"])
             stats["disagreements"] += not (many["agrees"] and many["usable_check"])
+            stats["kernel_panics"] += bool(many["kernel"]["panic"])
+            stats["kernel_disagreements"] += not many["kernel"]["memsize_agrees"]
             u = many["usable"]
             stats["table_min_usable"] = u if stats["table_min_usable"] is None else min(stats["table_min_usable"], u)
     return stats
@@ -335,6 +495,58 @@ def main():
                 problems.append(f"{name}: {r['reference']} excluded ranges exceed the table of {r['table']}")
             if r["size"] > BOOTSTRAP_MAX:
                 problems.append(f"{name}: {fmt_size(r['size'])} exceeds the {fmt_size(BOOTSTRAP_MAX)} the bootstrap tables map")
+        if r["configured"] and r["table"] and r["base"]:
+            k = r["kernel"]
+            print(f"  kernel: {k['ranges']} ranges, {fmt_size(k['bytes'])} excluded, table {k['table_bytes']} bytes, "
+                  f"{'PANIC ' + k['panic'] if k['panic'] else 'no panic'}; bank gaps in the span: {len(r['bank_gaps'])}")
+            if k["panic"]:
+                problems.append(f"{name}: the kernel would panic: {k['panic']}")
+            if not k["memsize_agrees"]:
+                problems.append(f"{name}: the kernel's excluded bytes differ from the loader's (hw.memsize)")
+            if r["bank_gaps"]:
+                problems.append(f"{name}: the window spans a DRAM bank gap the bootstrap tables would map")
+        if r["configured"] and r["base"]:
+            worst, offsets = bootstrap_worst(r["base"], r["size"])
+            r["bootstrap"] = {"worst_pages": worst, "worst_offsets": offsets, "pool": BOOTSTRAP_PAGES}
+            print(f"  bootstrap tables: at most {worst} of {BOOTSTRAP_PAGES} pages over every 2 MiB slide "
+                  f"({offsets} of 512 slides need that many)")
+            if worst > BOOTSTRAP_PAGES and r["table"]:
+                problems.append(f"{name}: a slide needs {worst} bootstrap table pages, the pool holds {BOOTSTRAP_PAGES}")
+
+    # The bounds the sources state, and the board's values against them.
+    limits, errors = source_limits()
+    problems += errors
+    print(f"source limits: {json.dumps(limits)}")
+    if {"window_min", "window_max", "window_step"} <= limits.keys():
+        for w in board_windows():
+            if not (limits["window_min"] <= w["size"] <= limits["window_max"]) or w["size"] % limits["window_step"]:
+                problems.append(f"{w['profile']}: owned_memory_size {w['size']:#x} is outside UniXNU's bounds")
+    if {"slots_min", "slots_max"} <= limits.keys():
+        for w in board_windows():
+            if w["table"] and not limits["slots_min"] <= w["table"] <= limits["slots_max"]:
+                problems.append(f"{w['profile']}: {w['table']} table slots outside {limits['slots_min']}..{limits['slots_max']}")
+    if limits.get("kernel_reserve") != (64, 32 * MIB) or limits.get("loader_reserve") != (64, 32 * MIB):
+        problems.append("the reserve formulas of the kernel patch and MemoryWindow.h are not the ones modelled "
+                        f"(kernel {limits.get('kernel_reserve')}, loader {limits.get('loader_reserve')})")
+    else:
+        for size in range(256 * MIB, 8 * GIB + 1, 256 * MIB):
+            if win.reserve(size) != kernel_reserve(size):
+                problems.append(f"loader and kernel reserve differ at {fmt_size(size)}")
+                break
+    if limits.get("bootstrap_pages") != BOOTSTRAP_PAGES:
+        problems.append(f"BOOTSTRAP_TABLE_SIZE is {limits.get('bootstrap_pages')} pages, the model assumes {BOOTSTRAP_PAGES}")
+    if "slots_max" in limits:
+        slots_bytes = 16 * limits["slots_max"]
+        if slots_bytes > kernel_reserve(limits.get("window_min", 256 * MIB)):
+            problems.append("the largest table does not fit the smallest reserve")
+    bootstrap_any = max_bootstrap_window()
+    bootstrap_aligned = max_bootstrap_window(L2_REGION)
+    print(f"bootstrap pool: largest window every slide maps: {fmt_size(bootstrap_any)} at any 2 MiB base, "
+          f"{fmt_size(bootstrap_aligned)} at a 1 GiB aligned base")
+    if bootstrap_any != BOOTSTRAP_MAX:
+        problems.append(f"the 4 KiB bootstrap pool maps {fmt_size(bootstrap_any)} at every base and slide, "
+                        f"not the {fmt_size(BOOTSTRAP_MAX)} board.toml states")
+
     mac = board_windows()[0]
     robust = None
     if mac["table"]:
@@ -342,7 +554,10 @@ def main():
         print(f"robustness ({mac['profile']}, {robust['trials']} maps with 1-24 random 2 MiB firmware holes in banks 1 "
               f"and 2): single run placed {robust['single_run_placed']}, excluded-range table placed "
               f"{robust['table_placed']} (merged {robust['table_merged']}, at most {robust['table_max_ranges']} ranges, "
-              f"min usable {fmt_size(robust['table_min_usable'] or 0)})")
+              f"min usable {fmt_size(robust['table_min_usable'] or 0)}); kernel panics {robust['kernel_panics']}, "
+              f"kernel/loader byte disagreements {robust['kernel_disagreements']}")
+        if robust["kernel_panics"] or robust["kernel_disagreements"]:
+            problems.append("the kernel's table check fails or disagrees with the loader on a perturbed map")
         if robust["disagreements"]:
             problems.append("MemoryWindow.h and the reference disagree on a perturbed map")
         if robust["table_placed"] != robust["trials"] or robust["table_merged"]:

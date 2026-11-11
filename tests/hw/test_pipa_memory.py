@@ -56,6 +56,70 @@ class Model(unittest.TestCase):
             self.assertEqual(rows["c"]["table"], 0)
 
 
+class KernelSide(unittest.TestCase):
+    """kernel_table: arm_vm_excluded_init of window-memory-excluded-ranges.patch, in Python."""
+    BASE, SIZE = 0xc0000000, 6 * GIB
+
+    def test_empty_slots_clip_round_join(self):
+        top = self.BASE + 192 * MIB
+        far = self.BASE + 1 * GIB
+        pairs = [(0, 0), (far + 0x1800, 0x1000), (far + 0x2000, 0x3000),     # touch after rounding: one range
+                 (far + 0x100000, 0x1000), (0, 0),
+                 (self.BASE + self.SIZE - 0x1000, 0x10000)]                 # runs past the span: clipped
+        k = pm.kernel_table(pairs, self.BASE, self.SIZE, top)
+        self.assertIsNone(k["panic"])
+        self.assertEqual(k["table"], [(far + 0x1000, far + 0x5000), (far + 0x100000, far + 0x101000),
+                                      (self.BASE + self.SIZE - 0x1000, self.BASE + self.SIZE)])
+        self.assertEqual(k["bytes"], 0x4000 + 0x1000 + 0x1000)
+        # The table takes the page(s) at the old avail_start.
+        self.assertEqual(k["avail_start"], ((top + 0xfff) & ~0xfff) + 0x1000)
+
+    def test_page_rounding_is_outward(self):
+        # A 16 KiB kernel would exclude more than a 4 KiB loader listed: memsize would disagree.
+        far = self.BASE + 1 * GIB
+        k4 = pm.kernel_table([(far + 0x1000, 0x1000)], self.BASE, self.SIZE, self.BASE)
+        k16 = pm.kernel_table([(far + 0x1000, 0x1000)], self.BASE, self.SIZE, self.BASE, page=0x4000)
+        self.assertEqual((k4["bytes"], k16["bytes"]), (0x1000, 0x4000))
+
+    def test_first_range_check(self):
+        top = self.BASE + 192 * MIB
+        reserve = pm.kernel_reserve(self.SIZE)
+        self.assertEqual(reserve, 96 * MIB)                                   # 6 GiB / 64
+        self.assertEqual(pm.kernel_reserve(1 * GIB), 32 * MIB)                # the floor
+        inside = pm.kernel_table([(top + reserve - 0x1000, 0x1000)], self.BASE, self.SIZE, top)
+        outside = pm.kernel_table([(top + reserve, 0x1000)], self.BASE, self.SIZE, top)
+        self.assertIn("inside the kernel's boot allocations", inside["panic"])
+        self.assertIsNone(outside["panic"])
+        self.assertIsNone(pm.kernel_table([], self.BASE, self.SIZE, top)["panic"])
+
+    def test_bootstrap_pool(self):
+        # 4 KiB granule: one L2 page per 1 GiB region; 2 roots + 14 L2 pages in the 16-page pool.
+        self.assertEqual(pm.l2_tables(0, 6 * GIB), 6)
+        self.assertEqual(pm.l2_tables(2 * MIB, 6 * GIB), 7)                   # straddles one more region
+        self.assertEqual(pm.bootstrap_worst(0xc0000000, 6 * GIB), (15, 511))  # aligned V=P, any slide
+        self.assertEqual(pm.bootstrap_worst(0xc0200000, 6 * GIB)[0], 16)      # both straddle: exactly full
+        self.assertEqual(pm.bootstrap_worst(0xc0200000, 6 * GIB + 256 * MIB)[0], 17)
+        self.assertEqual(pm.max_bootstrap_window(), 6 * GIB)
+        self.assertEqual(pm.max_bootstrap_window(pm.L2_REGION), 6 * GIB)
+
+    def test_bank_gaps(self):
+        self.assertEqual(pm.bank_gaps(0xc0000000, 6 * GIB), [])                # inside bank 1
+        gaps = pm.bank_gaps(0x80000000, 9 * GIB)
+        self.assertEqual(gaps, [(0xb7700000, 0xc0000000 - 0xb7700000), (0x280000000, 1 * GIB)])
+
+    def test_source_limits(self):
+        if not pm.DEVICETREE.is_file():
+            self.skipTest("third_party/UniXNU not checked out")
+        limits, errors = pm.source_limits()
+        self.assertEqual(errors, [])
+        self.assertEqual((limits["slots_min"], limits["slots_max"]), (1, 4096))
+        self.assertEqual((limits["window_min"], limits["window_max"], limits["window_step"]),
+                         (256 * MIB, 8 * GIB, 2 * MIB))
+        self.assertEqual(limits["kernel_reserve"], limits["loader_reserve"])
+        self.assertEqual(limits["bootstrap_pages"], pm.BOOTSTRAP_PAGES)
+        self.assertTrue(limits["first_range_check"])
+
+
 @unittest.skipUnless(HAVE, "needs a C compiler and third_party/UniXNU (git submodule update --init third_party/UniXNU)")
 class LoaderCode(unittest.TestCase):
     @classmethod
@@ -103,6 +167,44 @@ class LoaderCode(unittest.TestCase):
         self.assertEqual(stats["disagreements"], 0)
         self.assertEqual(stats["table_merged"], 0)
         self.assertLess(stats["single_run_placed"], 40)
+
+    def test_kernel_accepts_loader_tables(self):
+        """Every table MemoryWindow.h writes, at the smallest and the largest capacity UniXNU allows and at the
+        board's, is one the kernel takes without a panic and counts to the same bytes (hw.memsize)."""
+        rng = random.Random(9)
+        d0 = pm.model_map()
+        for capacity in (1, 64, 4096):
+            for _ in range(15):
+                d = pm.perturbed(d0, rng.randint(1, 40), rng)
+                row = pm.evaluate(self.win, d, 6 * GIB, capacity)
+                self.assertTrue(row["base"])
+                k = row["kernel"]
+                self.assertIsNone(k["panic"], (capacity, k))
+                self.assertTrue(k["memsize_agrees"], (capacity, k))
+                self.assertLessEqual(k["ranges"], capacity)
+                self.assertEqual(row["bank_gaps"], [])
+                if capacity == 1:
+                    self.assertLessEqual(len(row["exclusions"]), 1)
+                if capacity == 4096:
+                    self.assertFalse(row["merged"])
+
+    def test_loader_and_kernel_reserve_agree(self):
+        for size in range(256 * MIB, 8 * GIB + 1, 128 * MIB):
+            self.assertEqual(self.win.reserve(size), pm.kernel_reserve(size), size)
+
+    def test_head_never_holds_an_exclusion(self):
+        """A firmware hole right behind the image: the loader moves the window rather than hand the kernel a table
+        that would panic."""
+        d0 = pm.model_map()
+        d = pm.perturbed(d0, 0, random.Random(0))
+        hole = 0xc0000000 + 100 * MIB
+        d = sorted([x for x in d if not (x[0] == pm.FREE and x[1] <= hole < x[1] + x[2])] +
+                   [(pm.FREE, 0xc0000000, hole - 0xc0000000), (4, hole, 2 * MIB),
+                    (pm.FREE, hole + 2 * MIB, 0xc0000000 + 0x1c0000000 - hole - 2 * MIB)], key=lambda x: x[1])
+        row = pm.evaluate(self.win, d, 6 * GIB, 64)
+        self.assertTrue(row["base"])
+        self.assertNotEqual(row["base"], 0xc0000000)
+        self.assertIsNone(row["kernel"]["panic"])
 
     def test_random_maps_against_reference(self):
         rng = random.Random(1)
