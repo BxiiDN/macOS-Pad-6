@@ -105,13 +105,18 @@ class FeatureMasks(unittest.TestCase):
                        "pac-load": "pac-load", "pac-keyreg": "pac-keyreg", "jscvt": "jscvt",
                        "cfinv": "flagm", "rmif": "flagm", "setf": "flagm", "axflag": "flagm2",
                        "xaflag": "flagm2", "sb": "sb", "rcpc2": "rcpc2", "msr-dit": "pstate",
-                       "dit-reg": "pstate", "msr-ssbs": "pstate"}
+                       "dit-reg": "pstate", "msr-ssbs": "pstate", "eor3-bcax": "sha3", "xar": "sha3",
+                       "sha512su0": "sha512"}
         for name, mask, value, _n, fge in features.RULES:
             for _ in range(2000):
                 w = (value & mask) | (RNG.getrandbits(32) & ~mask & 0xFFFFFFFF)
                 hit = features.classify(w)
                 c_cls = CLASSES[lib.fge_classify(w, 1)]
-                if hit and hit[2]:
+                if hit and hit[0] == "sha512-rax1":
+                    # one rule, two FGE classes: RAX1 (op 3) is SHA3, the others SHA512
+                    want = "sha3" if (w >> 10) & 3 == 3 else "sha512"
+                    self.assertEqual(c_cls, want, f"{w:#010x} {hit}")
+                elif hit and hit[2]:
                     self.assertEqual(c_cls, rule_to_fge[hit[0]], f"{w:#010x} {hit}")
                 elif c_cls != "none":
                     self.fail(f"{w:#010x}: FGE claims {c_cls}, rules say {hit}")

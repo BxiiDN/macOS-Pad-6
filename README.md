@@ -2,7 +2,14 @@
 
 Riset dan implementasi untuk menjalankan **macOS asli (XNU + userland Apple)** di **Xiaomi Pad 6** (pipa, Snapdragon 870 / SM8250, Adreno 650), di atas [UniXNU](https://github.com/UniXNU/UniXNU) dan port pipa milik [xVanTuring](https://github.com/xVanTuring/UniXNU-pipa).
 
-> **Status: macOS belum boot di Pad 6.** Belum ada bagian macOS yang berstatus WORKING di perangkat. Yang sudah ada dan teruji di host: lapisan yang menjawab hambatan utama, yaitu CPU Pad 6 (ARMv8.2) tidak punya Pointer Authentication, sedangkan seluruh macOS untuk ARM adalah arm64e. Lihat [docs/compatibility.md](docs/compatibility.md).
+> **Status: Tahoe belum boot di Pad 6.** Target: **macOS Tahoe 26.5 (25F71)**, rilis Tahoe terbaru yang source kernelnya (xnu-12377.121.6) dipublikasikan Apple. Yang sudah ada:
+>
+> - audit biner Tahoe asli (IPSW resmi 26.5 dan sistem 26.7.2 di runner Apple Silicon);
+> - profil UniXNU `macos-26.5-25F71` yang dibuat dari IPSW itu;
+> - rantai patch XNU untuk pipa (118/118 apply);
+> - lapisan yang menangani hambatan utama: CPU Pad 6 (ARMv8.2) tidak punya Pointer Authentication, sedangkan seluruh macOS untuk ARM adalah arm64e.
+>
+> Laporan lengkap ada di [docs/tahoe-26-report.md](docs/tahoe-26-report.md); status per fitur di [docs/compatibility.md](docs/compatibility.md).
 
 Ini bukan launcher, tema, simulator, atau skin.
 
@@ -20,13 +27,16 @@ Penjelasan lengkap: [docs/feasibility.md](docs/feasibility.md). Audit proyek ups
 
 | Path | Isi |
 | --- | --- |
-| `kernel/fge/` | **FGE**: emulator C tanpa libc untuk instruksi ARMv8.3–8.5 yang tidak dimiliki SM8250: PAuth sebagai *null PAC*, FJCVTZS, FlagM/FlagM2, SB, LDAPUR/STLUR, DIT/SSBS, register kunci PAC |
+| `kernel/fge/` | **FGE**: emulator C tanpa libc untuk instruksi ARMv8.3–8.5 yang tidak dimiliki SM8250: PAuth sebagai *null PAC*, FJCVTZS, FlagM/FlagM2, SB, LDAPUR/STLUR, DIT/SSBS, SHA3, SHA512, register kunci PAC |
 | `kernel/xnu/`, `kernel/patches/xnu-12377/` | Integrasi ke handler exception XNU; patch untuk xnu-12377.121.6 (revisi yang dipin UniXNU) |
 | `tools/isa/pacstrip.py` | Menulis ulang instruksi PAC di kernel collection ke padanan ARMv8.2 yang setara persis, sebelum boot |
 | `tools/isa/audit.py` | Sensus instruksi bermasalah di Mach-O / kernel collection / dyld shared cache; juga gerbang build |
 | `tests/device/cpu_features_probe.c` | Probe read-only untuk tablet (Android, tanpa root) |
+| `profiles/macos-26.5/` | Profil OS UniXNU Tahoe 26.5 (`unixnu/`), seri SoC SM8250, patch null-PAC + FGE untuk pipa |
+| `tools/isa/ipsw.py`, `tools/isa/tahoe_audit.py` | Pembaca IPSW resmi via HTTP range, dan audit Tahoe (dijalankan di `.github/workflows/tahoe-audit.yml`) |
+| `docs/evidence/tahoe-26.5/` | Bukti audit: angka, versi, dan hash (tanpa kode Apple) |
 | `third_party/` | UniXNU, UniXNU-pipa, uefi-pipa sebagai submodul yang dipin |
-| `docs/` | audit, kelayakan, arsitektur, kompatibilitas, boot, driver, pengujian, roadmap |
+| `docs/` | laporan Tahoe 26.x, audit, kelayakan, arsitektur, kompatibilitas, boot, driver, pengujian, roadmap |
 
 ## Mencoba
 

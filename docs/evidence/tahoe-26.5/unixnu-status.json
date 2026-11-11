@@ -1,0 +1,19 @@
+{
+  "profile": "macos-26.5-25F71",
+  "ipsw": [
+    "Macmini9,1",
+    "26.5",
+    "25F71"
+  ],
+  "kernelcache_sha256": "19ae26f46899eb893052436482ac7a7cbf3bbb2b7b0c46b964a849c14442d137",
+  "early_security_init": "com.apple.driver.AppleMobileFileIntegrity=0xfffffe00096f17cc",
+  "patches": 135,
+  "patches_27_3": 139,
+  "darwin26_patches": [],
+  "only_in_27_3": [
+    "darwin26-kpi.patch",
+    "darwin26-shared-region.patch",
+    "darwin26-syscalls.patch",
+    "macos-darwin26-kpi.patch"
+  ]
+}

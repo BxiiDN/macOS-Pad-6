@@ -13,6 +13,12 @@ Butuh: Python ≥ 3.11, clang dengan target AArch64, `llvm-mc`, `ld.lld`. Encodi
 | `tests/isa/test_isa.py` | Mask fitur sepakat dengan LLVM; setiap rewrite pacstrip setara (decode LLVM sebelum/sesudah); data-in-code utuh; parsing fat, MH_FILESET, dyld cache | Kernel collection Apple asli |
 | `tests/xnu_shim/check.sh` | Glue XNU lolos compile dengan deklarasi yang disalin dari xnu-12377.121.6 | Build kernel XNU sebenarnya |
 | `scripts/gen_xnu_patch.py --check` | Patch yang di-commit sesuai sumber dan apply bersih ke xnu `ac9718fb1af6` | — |
+| `tests/fge/test_fge_sha.py` | SHA3/SHA512 FGE = model Python; dengan `QEMU_SRC`, = helper QEMU (oracle, tidak di-commit) | — |
+| `tests/isa/test_scan.py` | Scanner C (`scan.c`) = aturan Python, `rules.h` sesuai `features.py` | — |
+| `tests/isa/test_inspect.py`, `test_ipsw.py` | Chained fixups, fileset, simbol, dyld cache multi-file + atribusi per image; ZIP64/CRC/IM4P/ADT | IPSW asli (dikerjakan di workflow `tahoe-audit.yml`) |
+| `tests/xnu_shim/glue_host_test.c` | Glue XNU di host: register, jalur atomic, saklar `fge=` | Build XNU sebenarnya |
+| `scripts/check_patch_chain.py --profile tahoe-26.5` | Rantai patch pipa Tahoe 26.5 apply 118/118 | Build kernel |
+| `scripts/check_tahoe_profile.py` | Profil 26.5 di-resolve `unixnu status` | Build payload |
 | `build/device/cpu_features_probe` | Dibangun sebagai ELF static-PIE AArch64 tanpa relokasi | Hasil di tablet (belum dijalankan) |
 
 ## Uji di perangkat (non-destruktif)

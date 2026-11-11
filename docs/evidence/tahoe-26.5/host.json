@@ -1,0 +1,2143 @@
+{
+  "generated": "2026-11-11T02:22:04Z",
+  "kind": "host",
+  "sw_vers": "ProductName:\t\tmacOS\nProductVersion:\t\t26.7.2\nBuildVersion:\t\t25G332",
+  "uname": "Darwin Kernel Version 25.6.0: Mon Oct 12 00:39:04 PDT 2026; root:xnu-12377.161.15.701.48~2/RELEASE_ARM64_VMAPPLE",
+  "machine": "arm64",
+  "hw_model": "VirtualMac2,1",
+  "cpu": "Apple M1 (Virtual)",
+  "hw_optional": {
+    "hw.optional.arm.FEAT_CRC32": "1",
+    "hw.optional.arm.FEAT_FlagM": "1",
+    "hw.optional.arm.FEAT_FlagM2": "1",
+    "hw.optional.arm.FEAT_FHM": "1",
+    "hw.optional.arm.FEAT_DotProd": "1",
+    "hw.optional.arm.FEAT_SHA3": "1",
+    "hw.optional.arm.FEAT_RDM": "1",
+    "hw.optional.arm.FEAT_LSE": "1",
+    "hw.optional.arm.FEAT_SHA256": "1",
+    "hw.optional.arm.FEAT_SHA512": "1",
+    "hw.optional.arm.FEAT_SHA1": "1",
+    "hw.optional.arm.FEAT_AES": "1",
+    "hw.optional.arm.FEAT_PMULL": "1",
+    "hw.optional.arm.FEAT_SPECRES": "0",
+    "hw.optional.arm.FEAT_SPECRES2": "0",
+    "hw.optional.arm.FEAT_SB": "1",
+    "hw.optional.arm.FEAT_FRINTTS": "1",
+    "hw.optional.arm.FEAT_PACIMP": "1",
+    "hw.optional.arm.FEAT_LRCPC": "1",
+    "hw.optional.arm.FEAT_LRCPC2": "1",
+    "hw.optional.arm.FEAT_FCMA": "1",
+    "hw.optional.arm.FEAT_JSCVT": "1",
+    "hw.optional.arm.FEAT_PAuth": "1",
+    "hw.optional.arm.FEAT_PAuth2": "0",
+    "hw.optional.arm.FEAT_FPAC": "0",
+    "hw.optional.arm.FEAT_FPACCOMBINE": "0",
+    "hw.optional.arm.FEAT_DPB": "1",
+    "hw.optional.arm.FEAT_DPB2": "1",
+    "hw.optional.arm.FEAT_BF16": "0",
+    "hw.optional.arm.FEAT_EBF16": "0",
+    "hw.optional.arm.FEAT_I8MM": "0",
+    "hw.optional.arm.FEAT_WFxT": "0",
+    "hw.optional.arm.FEAT_RPRES": "0",
+    "hw.optional.arm.FEAT_CSSC": "0",
+    "hw.optional.arm.FEAT_HBC": "0",
+    "hw.optional.arm.FEAT_ECV": "0",
+    "hw.optional.arm.FEAT_AFP": "0",
+    "hw.optional.arm.FEAT_LSE2": "1",
+    "hw.optional.arm.FEAT_CSV2": "1",
+    "hw.optional.arm.FEAT_CSV3": "1",
+    "hw.optional.arm.FEAT_DIT": "1",
+    "hw.optional.arm.AdvSIMD": "1",
+    "hw.optional.arm.AdvSIMD_HPFPCvt": "1",
+    "hw.optional.arm.FEAT_FP16": "1",
+    "hw.optional.arm.FEAT_SSBS": "0",
+    "hw.optional.arm.FEAT_BTI": "0",
+    "hw.optional.arm.FEAT_SME": "0",
+    "hw.optional.arm.FEAT_SME2": "0",
+    "hw.optional.arm.FEAT_SME2p1": "0",
+    "hw.optional.arm.FEAT_MTE": "0",
+    "hw.optional.arm.FEAT_MTE2": "0",
+    "hw.optional.arm.FEAT_MTE3": "0",
+    "hw.optional.arm.FEAT_MTE4": "0",
+    "hw.optional.arm.FEAT_MTE_ASYNC": "0",
+    "hw.optional.arm.FEAT_MTE_STORE_ONLY": "0",
+    "hw.optional.arm.SME_F32F32": "0",
+    "hw.optional.arm.SME_BI32I32": "0",
+    "hw.optional.arm.SME_B16F32": "0",
+    "hw.optional.arm.SME_F16F32": "0",
+    "hw.optional.arm.SME_I8I32": "0",
+    "hw.optional.arm.SME_I16I32": "0",
+    "hw.optional.arm.FEAT_SME_F64F64": "0",
+    "hw.optional.arm.FEAT_SME_I16I64": "0",
+    "hw.optional.arm.FEAT_SME_F16F16": "0",
+    "hw.optional.arm.FEAT_SME_B16B16": "0",
+    "hw.optional.arm.FEAT_SVE_B16B16": "0",
+    "hw.optional.arm.FP_SyncExceptions": "1",
+    "hw.optional.arm.FEAT_MTE_CANONICAL_TAGS": "0",
+    "hw.optional.arm.FEAT_MTE_NO_ADDRESS_TAGS": "0",
+    "hw.optional.arm.caps": "292171334003191807",
+    "hw.optional.arm.sme_max_svl_b": "0",
+    "hw.optional.floatingpoint": "1",
+    "hw.optional.neon": "1",
+    "hw.optional.neon_hpfp": "1",
+    "hw.optional.neon_fp16": "1",
+    "hw.optional.armv8_crc32": "1",
+    "hw.optional.armv8_gpi": "1",
+    "hw.optional.armv8_1_atomics": "1",
+    "hw.optional.armv8_2_fhm": "1",
+    "hw.optional.armv8_2_sha512": "1",
+    "hw.optional.armv8_2_sha3": "1",
+    "hw.optional.armv8_3_compnum": "1",
+    "hw.optional.watchpoint": "4",
+    "hw.optional.breakpoint": "6",
+    "hw.optional.ucnormal_mem": "0",
+    "hw.optional.arm64": "1"
+  },
+  "dyld_cache_files": [
+    "dyld_shared_cache_arm64e",
+    "dyld_shared_cache_arm64e.01",
+    "dyld_shared_cache_arm64e.02.dylddata",
+    "dyld_shared_cache_arm64e.03.dyldreadonly",
+    "dyld_shared_cache_arm64e.04.dyldlinkedit",
+    "dyld_shared_cache_arm64e.05",
+    "dyld_shared_cache_arm64e.06.dylddata",
+    "dyld_shared_cache_arm64e.07.dyldreadonly",
+    "dyld_shared_cache_arm64e.08.dyldlinkedit",
+    "dyld_shared_cache_arm64e.09",
+    "dyld_shared_cache_arm64e.10.dylddata",
+    "dyld_shared_cache_arm64e.11",
+    "dyld_shared_cache_arm64e.12.dyldlinkedit",
+    "dyld_shared_cache_arm64e.atlas",
+    "dyld_shared_cache_arm64e.map",
+    "dyld_shared_cache_x86_64",
+    "dyld_shared_cache_x86_64.01",
+    "dyld_shared_cache_x86_64.02",
+    "dyld_shared_cache_x86_64.03",
+    "dyld_shared_cache_x86_64.04",
+    "dyld_shared_cache_x86_64.05",
+    "dyld_shared_cache_x86_64.06",
+    "dyld_shared_cache_x86_64.atlas",
+    "dyld_shared_cache_x86_64.map"
+  ],
+  "dyld_cache": {
+    "main": "/System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/dyld_shared_cache_arm64e",
+    "arch": "arm64e",
+    "subcaches": [
+      "dyld_shared_cache_arm64e",
+      "dyld_shared_cache_arm64e.01",
+      "dyld_shared_cache_arm64e.02.dylddata",
+      "dyld_shared_cache_arm64e.03.dyldreadonly",
+      "dyld_shared_cache_arm64e.04.dyldlinkedit",
+      "dyld_shared_cache_arm64e.05",
+      "dyld_shared_cache_arm64e.06.dylddata",
+      "dyld_shared_cache_arm64e.07.dyldreadonly",
+      "dyld_shared_cache_arm64e.08.dyldlinkedit",
+      "dyld_shared_cache_arm64e.09",
+      "dyld_shared_cache_arm64e.10.dylddata",
+      "dyld_shared_cache_arm64e.11",
+      "dyld_shared_cache_arm64e.12.dyldlinkedit"
+    ],
+    "images": 3648,
+    "os_version": "26.7.0",
+    "slide_info_versions": {
+      "5": 13
+    },
+    "code_bytes": 2951077628,
+    "counts": {
+      "pac-branch": {
+        "count": 15083492,
+        "feature": "PAuth",
+        "fge": true
+      },
+      "pac-dp1": {
+        "count": 11846358,
+        "feature": "PAuth",
+        "fge": true
+      },
+      "fcadd": {
+        "count": 16239,
+        "feature": "FCMA",
+        "fge": false
+      },
+      "xar": {
+        "count": 9037,
+        "feature": "SHA3",
+        "fge": false
+      },
+      "eor3-bcax": {
+        "count": 5729,
+        "feature": "SHA3",
+        "fge": false
+      },
+      "fcmla-elem": {
+        "count": 5643,
+        "feature": "FCMA",
+        "fge": false
+      },
+      "fcmla": {
+        "count": 3392,
+        "feature": "FCMA",
+        "fge": false
+      },
+      "jscvt": {
+        "count": 1009,
+        "feature": "JSCVT",
+        "fge": true
+      },
+      "sha512-rax1": {
+        "count": 941,
+        "feature": "SHA512/SHA3",
+        "fge": false
+      },
+      "pacga": {
+        "count": 724,
+        "feature": "PAuth",
+        "fge": true
+      },
+      "sha512su0": {
+        "count": 256,
+        "feature": "SHA512",
+        "fge": false
+      },
+      "msr-dit": {
+        "count": 101,
+        "feature": "DIT",
+        "fge": true
+      },
+      "dit-reg": {
+        "count": 91,
+        "feature": "DIT",
+        "fge": true
+      },
+      "fmlal-elem": {
+        "count": 56,
+        "feature": "FHM",
+        "fge": false
+      },
+      "fmlal2-elem": {
+        "count": 56,
+        "feature": "FHM",
+        "fge": false
+      },
+      "pac-load": {
+        "count": 22,
+        "feature": "PAuth",
+        "fge": true
+      },
+      "rcpc2": {
+        "count": 15,
+        "feature": "LRCPC2",
+        "fge": true
+      },
+      "fmlal-vec": {
+        "count": 8,
+        "feature": "FHM",
+        "fge": false
+      },
+      "fmlal2-vec": {
+        "count": 8,
+        "feature": "FHM",
+        "fge": false
+      },
+      "sb": {
+        "count": 7,
+        "feature": "SB",
+        "fge": true
+      }
+    },
+    "top_images": {
+      "jscvt": [
+        [
+          "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore",
+          523
+        ],
+        [
+          "/System/iOSSupport/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore",
+          463
+        ],
+        [
+          "/System/Library/Frameworks/WebKit.framework/Versions/A/Frameworks/WebCore.framework/Versions/A/WebCore",
+          12
+        ],
+        [
+          "/System/iOSSupport/System/Library/PrivateFrameworks/WebCore.framework/Versions/A/WebCore",
+          11
+        ]
+      ],
+      "fcadd": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib",
+          16239
+        ]
+      ],
+      "fcmla": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib",
+          3156
+        ],
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparseBLAS.dylib",
+          228
+        ],
+        [
+          "/System/Library/PrivateFrameworks/VectorKit.framework/Versions/A/VectorKit",
+          4
+        ],
+        [
+          "/System/Library/Frameworks/ShazamKit.framework/Versions/A/ShazamKit",
+          4
+        ]
+      ],
+      "fcmla-elem": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib",
+          5642
+        ],
+        [
+          "/usr/lib/system/libsystem_m.dylib",
+          1
+        ]
+      ],
+      "sb": [
+        [
+          "/usr/lib/dyld",
+          1
+        ],
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          1
+        ],
+        [
+          "/usr/lib/system/libsystem_platform.dylib",
+          1
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          1
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          1
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          1
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          1
+        ]
+      ],
+      "rcpc2": [
+        [
+          "/usr/lib/system/libsystem_m.dylib",
+          11
+        ],
+        [
+          "/System/Library/Frameworks/WebKit.framework/Versions/A/Frameworks/WebCore.framework/Versions/A/Frameworks/libwebrtc.dylib",
+          2
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CryptexServer.framework/Versions/A/CryptexServer",
+          2
+        ]
+      ],
+      "msr-dit": [
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          30
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          30
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          30
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          5
+        ],
+        [
+          "/usr/lib/dyld",
+          2
+        ],
+        [
+          "/usr/lib/system/libsystem_platform.dylib",
+          2
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          2
+        ]
+      ],
+      "dit-reg": [
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          28
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          28
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          28
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          4
+        ],
+        [
+          "/usr/lib/dyld",
+          1
+        ],
+        [
+          "/usr/lib/system/libsystem_platform.dylib",
+          1
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          1
+        ]
+      ],
+      "eor3-bcax": [
+        [
+          "/System/Library/PrivateFrameworks/Osprey.framework/Versions/A/Osprey",
+          1140
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AuthKit.framework/Versions/A/AuthKit",
+          1078
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AppleAccount.framework/Versions/A/AppleAccount",
+          1078
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AOSKit.framework/Versions/A/AOSKit",
+          1078
+        ],
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvMisc.dylib",
+          145
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AppleMediaServices.framework/Versions/A/AppleMediaServices",
+          129
+        ],
+        [
+          "/System/Library/Frameworks/WebKit.framework/Versions/A/Frameworks/WebCore.framework/Versions/A/WebCore",
+          112
+        ],
+        [
+          "/System/Library/Frameworks/WebKit.framework/Versions/A/Frameworks/WebCore.framework/Versions/A/Frameworks/libwebrtc.dylib",
+          102
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AppleMediaServicesKitInternal.framework/Versions/A/AppleMediaServicesKitInternal",
+          91
+        ],
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          70
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          70
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          70
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AppleMediaServicesKitSupport.framework/Versions/A/AppleMediaServicesKitSupport",
+          62
+        ],
+        [
+          "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+          48
+        ],
+        [
+          "/System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/A/Libraries/libLLVMContainer.dylib",
+          48
+        ],
+        [
+          "/usr/lib/libInFieldCollection.dylib",
+          37
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          35
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          35
+        ],
+        [
+          "/System/Library/PrivateFrameworks/MobileAssetDaemon.framework/Versions/A/MobileAssetDaemon",
+          35
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CoreHandwriting.framework/Versions/A/CoreHandwriting",
+          27
+        ],
+        [
+          "/System/Library/PrivateFrameworks/APFoundation.framework/Versions/A/APFoundation",
+          26
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CoreOCModules.framework/Versions/A/CoreOCModules",
+          21
+        ],
+        [
+          "/System/Library/PrivateFrameworks/iTunesCloud.framework/Versions/A/iTunesCloud",
+          19
+        ],
+        [
+          "/usr/lib/system/libsystem_m.dylib",
+          17
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CryptexServer.framework/Versions/A/CryptexServer",
+          15
+        ]
+      ],
+      "sha512-rax1": [
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          122
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          122
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          122
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          117
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          117
+        ],
+        [
+          "/usr/lib/dyld",
+          112
+        ],
+        [
+          "/System/Library/Frameworks/WebKit.framework/Versions/A/Frameworks/WebCore.framework/Versions/A/Frameworks/libwebrtc.dylib",
+          112
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CryptexServer.framework/Versions/A/CryptexServer",
+          112
+        ],
+        [
+          "/System/Library/PrivateFrameworks/MobileAssetDaemon.framework/Versions/A/MobileAssetDaemon",
+          5
+        ]
+      ],
+      "xar": [
+        [
+          "/System/Library/PrivateFrameworks/AuthKit.framework/Versions/A/AuthKit",
+          2197
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AppleAccount.framework/Versions/A/AppleAccount",
+          2197
+        ],
+        [
+          "/System/Library/PrivateFrameworks/AOSKit.framework/Versions/A/AOSKit",
+          2197
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Osprey.framework/Versions/A/Osprey",
+          2197
+        ],
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          48
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          48
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          48
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          24
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          24
+        ],
+        [
+          "/System/Library/PrivateFrameworks/MobileAssetDaemon.framework/Versions/A/MobileAssetDaemon",
+          24
+        ],
+        [
+          "/System/Library/Frameworks/Matter.framework/Versions/A/Matter",
+          12
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CryptexServer.framework/Versions/A/CryptexServer",
+          12
+        ],
+        [
+          "/usr/lib/libboringssl.dylib",
+          6
+        ],
+        [
+          "/System/Library/QuickLook/iWork.qlgenerator/Contents/Frameworks/TSTables.framework/Versions/A/TSTables",
+          2
+        ],
+        [
+          "/usr/lib/system/libsystem_m.dylib",
+          1
+        ]
+      ],
+      "sha512su0": [
+        [
+          "/usr/lib/dyld",
+          32
+        ],
+        [
+          "/usr/lib/system/libcorecrypto.dylib",
+          32
+        ],
+        [
+          "/usr/lib/libMobileGestalt.dylib",
+          32
+        ],
+        [
+          "/System/Library/Frameworks/WebKit.framework/Versions/A/Frameworks/WebCore.framework/Versions/A/Frameworks/libwebrtc.dylib",
+          32
+        ],
+        [
+          "/System/Library/PrivateFrameworks/Bootability.framework/Versions/A/Frameworks/BootabilityBrain.framework/Versions/A/BootabilityBrain",
+          32
+        ],
+        [
+          "/System/Library/PrivateFrameworks/CryptexServer.framework/Versions/A/CryptexServer",
+          32
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_noasm.dylib",
+          32
+        ],
+        [
+          "/usr/lib/system/libcorecrypto_trace.dylib",
+          32
+        ]
+      ],
+      "fmlal-vec": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib",
+          8
+        ]
+      ],
+      "fmlal2-vec": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib",
+          8
+        ]
+      ],
+      "fmlal-elem": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib",
+          56
+        ]
+      ],
+      "fmlal2-elem": [
+        [
+          "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib",
+          56
+        ]
+      ],
+      "pacga": [
+        [
+          "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
+          330
+        ],
+        [
+          "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics",
+          212
+        ],
+        [
+          "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
+          106
+        ],
+        [
+          "/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore",
+          35
+        ],
+        [
+          "/System/iOSSupport/System/Library/Frameworks/JavaScriptCore.framework/Versions/A/JavaScriptCore",
+          35
+        ],
+        [
+          "/usr/lib/libobjc.A.dylib",
+          4
+        ],
+        [
+          "/usr/lib/system/libsystem_trace.dylib",
+          2
+        ]
+      ],
+      "pac-load": [
+        [
+          "/usr/lib/libc++abi.dylib",
+          21
+        ],
+        [
+          "/usr/lib/system/libsystem_m.dylib",
+          1
+        ]
+      ]
+    },
+    "images_using": {
+      "jscvt": 4,
+      "fcadd": 1,
+      "fcmla": 4,
+      "fcmla-elem": 2,
+      "sb": 7,
+      "rcpc2": 3,
+      "msr-dit": 7,
+      "dit-reg": 7,
+      "eor3-bcax": 67,
+      "sha512-rax1": 9,
+      "xar": 15,
+      "sha512su0": 8,
+      "fmlal-vec": 1,
+      "fmlal2-vec": 1,
+      "fmlal-elem": 1,
+      "fmlal2-elem": 1,
+      "pacga": 7,
+      "pac-load": 2
+    },
+    "contexts": {
+      "jscvt": [
+        "blraa ; cbz ; ldr ; fjcvtzs ; ldr ; fjcvtzs ; orr",
+        "ldr ; b ; ldr ; fjcvtzs ; ldr ; fjcvtzs ; lsl",
+        "ldr ; fcmp ; b.vs ; fjcvtzs ; str ; ldp ; cmp",
+        "b.hs ; add ; fmov ; fjcvtzs ; b ; ldrb ; and",
+        "ldr ; fcmp ; b.vs ; fjcvtzs ; str ; ldp ; cmp",
+        "b.hs ; add ; fmov ; fjcvtzs ; ldr ; adrp ; ldr"
+      ],
+      "fcadd": [
+        "subs ; b.eq ; b ; fcadd ; fcadd ; fcadd ; fcadd",
+        "b.eq ; b ; fcadd ; fcadd ; fcadd ; fcadd ; fcadd",
+        "b ; fcadd ; fcadd ; fcadd ; fcadd ; fcadd ; fcadd",
+        "fcadd ; fcadd ; fcadd ; fcadd ; fcadd ; fcadd ; fcadd"
+      ],
+      "fcmla": [
+        "movi ; movi ; movi ; fcmla ; fcmla ; fcmla ; fcmla",
+        "movi ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla",
+        "b.hs ; ldp ; movi ; fcmla ; fcmla ; movi ; fcmla",
+        "fcmla ; fcmla ; movi ; fcmla ; fcmla ; ldp ; mul",
+        "mov ; mov ; mov ; fcmla ; mov ; fcmla ; fcmla",
+        "fcmla ; mov ; fcmla ; fcmla ; fcmla ; mov ; mov"
+      ],
+      "fcmla-elem": [
+        "ld1 ; ld1 ; ld1 ; fcmla ; fcmla ; fcmla ; fcmla",
+        "ld1 ; ld1 ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla",
+        "ld1 ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla",
+        "fcmla ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla ; fcmla",
+        "b ; fcmla  [5 undecodable]"
+      ],
+      "sb": [
+        "mrs ; ubfx ; msr ; sb ; ret ; tbnz ; msr",
+        "dsb ; isb ; ret ; sb ; ret ; mov ; movk",
+        "mrs ; ubfx ; msr ; sb ; ret ; tbnz ; msr",
+        "dsb ; isb ; ret ; sb ; ret ; mov ; movk",
+        "dsb ; isb ; ret ; sb ; ret ; mov ; movk",
+        "dsb ; isb ; ret ; sb ; ret ; mov ; movk"
+      ],
+      "rcpc2": [
+        "umlal2 ; stnp ; ldapurh ; str  [3 undecodable]",
+        "umlal2 ; stnp ; ldapurh ; str  [3 undecodable]",
+        "str ; ldapur ; str  [4 undecodable]",
+        "ldapursw  [6 undecodable]",
+        "ldapursw  [6 undecodable]",
+        "str ; stlurh ; ldclral  [4 undecodable]"
+      ],
+      "msr-dit": [
+        "retab ; mrs ; ubfx ; msr ; sb ; ret ; tbnz",
+        "tbz ; mrs ; tbnz ; msr ; mov ; b ; mov",
+        "retab ; mrs ; ubfx ; msr ; sb ; ret ; tbnz",
+        "ldr ; tbnz ; tbz ; msr ; ret ; cbz ; mov",
+        "mrs ; cmp ; cset ; msr ; ldr ; tbnz ; dsb",
+        "tbz ; mrs ; tbnz ; msr ; mov ; b ; mov"
+      ],
+      "dit-reg": [
+        "ldp ; ldp ; retab ; mrs ; ubfx ; msr ; sb",
+        "movk ; ldr ; tbz ; mrs ; tbnz ; msr ; mov",
+        "tbnz ; mov ; b ; mrs ; cmp ; cset ; msr",
+        "tbnz ; mov ; b ; mrs ; cmp ; cset ; msr",
+        "movk ; ldr ; tbz ; mrs ; tbnz ; msr ; mov",
+        "movk ; ldr ; tbz ; mrs ; tbnz ; msr ; mov"
+      ],
+      "eor3-bcax": [
+        "mov ; adrp ; add ; eor3 ; eor3 ; eor3 ; eor3",
+        "eor3 ; eor3 ; eor3 ; eor3 ; eor3 ; eor3 ; eor3",
+        "eor ; str ; ldr ; eor3 ; str ; subs ; b.ne",
+        "eor3 ; rev64 ; ext ; eor3 ; rev64 ; ext ; str",
+        "ldp ; ldp ; movi ; eor3 ; ushll2 ; ushll ; ext",
+        "ld1 ; ushr ; eor ; eor3 ; str ; cmp ; cset"
+      ],
+      "sha512-rax1": [
+        "add ; ext ; ldr ; sha512h ; sha512su0 ; mov ; sha512h2",
+        "eor3 ; rax1 ; rax1 ; rax1 ; rax1 ; rax1 ; xar",
+        "add ; sha512su0 ; ext ; sha512h ; sha512su1 ; add ; sha512h2",
+        "eor3 ; rax1 ; rax1 ; rax1 ; rax1 ; rax1 ; xar",
+        "eor3 ; eor3 ; eor3 ; rax1 ; rax1 ; rax1 ; rax1",
+        "eor3 ; rax1 ; rax1 ; rax1 ; rax1 ; rax1 ; xar"
+      ],
+      "xar": [
+        "rax1 ; rax1 ; rax1 ; xar ; xar ; xar ; xar",
+        "rax1 ; rax1 ; xar ; xar ; xar ; xar ; xar",
+        "eor ; eor ; xar ; xar ; xar ; xar ; xar",
+        "eor ; xar ; xar ; xar ; xar ; xar ; xar",
+        "xar ; xar ; xar ; xar ; xar ; xar ; xar",
+        "tbnz ; ldr ; movi ; xar ; movi ; and ; str"
+      ],
+      "sha512su0": [
+        "ext ; ldr ; sha512h ; sha512su0 ; mov ; sha512h2 ; sha512su1",
+        "ext ; ldr ; sha512h ; sha512su0 ; mov ; sha512h2 ; sha512su1",
+        "ext ; ldr ; sha512h ; sha512su0 ; mov ; sha512h2 ; sha512su1",
+        "ext ; ext ; add ; sha512su0 ; ext ; sha512h ; sha512su1",
+        "ext ; ext ; add ; sha512su0 ; ext ; sha512h ; sha512su1",
+        "ext ; ldr ; sha512h ; sha512su0 ; mov ; sha512h2 ; sha512su1"
+      ],
+      "fmlal-vec": [
+        "fmul ; fmul ; stp ; fmlal ; fmlal2 ; fmlal ; add",
+        "stp ; fmlal ; fmlal2 ; fmlal ; add ; add ; fmlal2",
+        "ldp ; movi ; ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2",
+        "ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2 ; cbz ; fadd"
+      ],
+      "fmlal2-vec": [
+        "fmul ; stp ; fmlal ; fmlal2 ; fmlal ; add ; add",
+        "fmlal ; add ; add ; fmlal2 ; mov ; cmp ; b.ls",
+        "movi ; ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2 ; cbz",
+        "fmlal ; fmlal2 ; fmlal ; fmlal2 ; cbz ; fadd ; fadd"
+      ],
+      "fmlal-elem": [
+        "ldr ; ldr ; ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2",
+        "ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2 ; ldp ; fmlal",
+        "fmlal ; fmlal2 ; ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2",
+        "ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2 ; ldp ; fmlal"
+      ],
+      "fmlal2-elem": [
+        "ldr ; ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2 ; ldp",
+        "fmlal ; fmlal2 ; fmlal ; fmlal2 ; ldp ; fmlal ; fmlal2",
+        "fmlal2 ; ldp ; fmlal ; fmlal2 ; fmlal ; fmlal2 ; ldp",
+        "fmlal ; fmlal2 ; fmlal ; fmlal2 ; ldp ; fmlal ; fmlal2"
+      ],
+      "pacga": [
+        "b.lo ; mov ; ldr ; pacga ; sub ; cmp ; b.hi",
+        "adrp ; add ; movk ; pacga ; adrp ; add ; bl",
+        "and ; and ; mov ; pacga ; pacga ; lsr ; and",
+        "ldrsw ; str ; ldar ; pacga ; pacga ; ldrsw ; ldr",
+        "mov ; str ; movk ; pacga ; str ; ldrsw ; mov",
+        "mov ; pacga ; pacga ; pacga ; ldp ; pacga ; pacga"
+      ],
+      "pac-load": [
+        "cbz ; ldr ; ldr ; ldraa ; mov ; mov ; mov",
+        "strh ; ldr ; ldr ; ldraa ; mov ; mov ; mov",
+        "cbz ; ldr ; ldr ; ldraa ; mov ; mov ; mov",
+        "ldur ; cbz ; ldr ; ldraa ; sub ; mov ; mov",
+        "ldrab  [6 undecodable]"
+      ]
+    }
+  },
+  "kernels": [
+    {
+      "path": "/System/Library/Kernels/kernel",
+      "size": 19008056,
+      "sha256": "a91aad0da9d0a2f545c06859524bb048f4e2e392e46aa12da9fabe652081be53",
+      "images": 0,
+      "arm64e_images": 0,
+      "arm64_slice": null,
+      "counts": {},
+      "pacstrip": {
+        "rewritten": {},
+        "left_for_fge": {}
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t6000",
+      "size": 16745928,
+      "sha256": "7e38c1ca41abcf84ec6af4df38231c339c8ae1faab6dba8bd5f5969d98cf0f9a",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31568,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 28601,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 82,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 28601,
+          "pac-branch": 31568,
+          "pac-keyreg": 82
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t6020",
+      "size": 16681712,
+      "sha256": "1caaa45c9f0e98eb84e3ad3f68d3835b9eb3310caa5cde468133bf7efce16748",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31579,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23248,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 592,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23248,
+          "pac-branch": 31579,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t6030",
+      "size": 16665288,
+      "sha256": "854e33f389862a8ad5a7238c75901d773c35414b9103bfbfabca092bbae23745",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31584,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23248,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 594,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23248,
+          "pac-branch": 31584,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t6031",
+      "size": 16685344,
+      "sha256": "eaddaf75be8f3b8f83144f582ef9557867bd6bf31e305713218f84a46428d8d0",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31617,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23256,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 594,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23256,
+          "pac-branch": 31617,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t6041",
+      "size": 16701968,
+      "sha256": "5bf1ea0685da6d5756dc6cf05ec0a086f5d2a3773b80f91f72650dc41842d9c0",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31620,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23283,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 594,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23283,
+          "pac-branch": 31620,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t6050",
+      "size": 17185912,
+      "sha256": "00d55b69e21edad764a4c1091bd266245a905954554ea3e159c0fd30d19a0bb0",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 32521,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 24275,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 606,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 48,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 24275,
+          "pac-branch": 32521,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 48
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t8103",
+      "size": 16961352,
+      "sha256": "16d6f3ce4dbe6cede9c65953e11018dfb32ad1991fff43d9b5867029bb869442",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31686,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 28519,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 102,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 3,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 8
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 28519,
+          "pac-branch": 31686,
+          "pac-keyreg": 102
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t8112",
+      "size": 16581072,
+      "sha256": "4514bb674922214a21f072bcf9c28ba0feb549bda832d2b6eee0ddb2c94ad560",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31572,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23251,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 592,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23251,
+          "pac-branch": 31572,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t8122",
+      "size": 16665424,
+      "sha256": "e28c5220ccb1865a720eac34e7395c1e99446e7f2987582507a2fa844af16b35",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31584,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23248,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 594,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23248,
+          "pac-branch": 31584,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t8132",
+      "size": 16665688,
+      "sha256": "bf7beebce2401d135e07cb9528f5c625e1efa7644783c9ea6e266ce5c102d9aa",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 31588,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23275,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 594,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 23275,
+          "pac-branch": 31588,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t8140",
+      "size": 17087928,
+      "sha256": "dbeb2ca4c034e678cf13997a4cf71a42a9421a4c6b4749032a1d0fe84ee4fff2",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 32414,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 24188,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 601,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 42,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 24188,
+          "pac-branch": 32414,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 42
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.t8142",
+      "size": 17182216,
+      "sha256": "57e17ca2df97fea6eaa8876e2196a37f8ff710dc5953a442e3c68bfce2813c7b",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 32491,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 24267,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "rcpc2": {
+          "count": 606,
+          "feature": "LRCPC2",
+          "fge": true
+        },
+        "pacga": {
+          "count": 48,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-keyreg": {
+          "count": 16,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 6
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 24267,
+          "pac-branch": 32491,
+          "pac-keyreg": 16
+        },
+        "left_for_fge": {
+          "pacga": 48
+        }
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/Kernels/kernel.release.vmapple",
+      "size": 16403864,
+      "sha256": "6f3e57127ceae9e718a40fc2d034147ef4879e8081b01ccae800323f79e49781",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 0,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 30816,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 28016,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pacga": {
+          "count": 17,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 6,
+          "feature": "DIT",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_KERNEL": 5
+      },
+      "pacstrip": {
+        "rewritten": {
+          "pac-dp1": 28016,
+          "pac-branch": 30816
+        },
+        "left_for_fge": {
+          "pacga": 17
+        }
+      },
+      "contexts": {}
+    }
+  ],
+  "kernel_collections": [
+    {
+      "path": "/System/Library/KernelCollections/BootKernelExtensions.kc",
+      "size": 67600384,
+      "sha256": "96c12f421a8e99580b5015dfd39877df38ecde9b9e056b8ccd28f15847bca35c",
+      "images": 0,
+      "arm64e_images": 0,
+      "arm64_slice": null,
+      "counts": {},
+      "pacstrip": {
+        "rewritten": {},
+        "left_for_fge": {}
+      },
+      "contexts": {}
+    },
+    {
+      "path": "/System/Library/KernelCollections/SystemKernelExtensions.kc",
+      "size": 369213440,
+      "sha256": "4b2fea2a43852a0c8acd07132d3ea09c1bbef85d5a37439f05d5dc1899330fd9",
+      "images": 0,
+      "arm64e_images": 0,
+      "arm64_slice": null,
+      "counts": {},
+      "pacstrip": {
+        "rewritten": {},
+        "left_for_fge": {}
+      },
+      "contexts": {}
+    }
+  ],
+  "executables": [
+    {
+      "path": "/usr/lib/dyld",
+      "size": 2562016,
+      "sha256": "bcc5e407d3c8217669d1995b84d0a6688503c2f4fd791b97f0b6f5bb6ac40591",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 1163264,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-dp1": {
+          "count": 3106,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-branch": {
+          "count": 2494,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "sha512-rax1": {
+          "count": 112,
+          "feature": "SHA512/SHA3",
+          "fge": false
+        },
+        "sha512su0": {
+          "count": 32,
+          "feature": "SHA512",
+          "fge": false
+        },
+        "msr-dit": {
+          "count": 2,
+          "feature": "DIT",
+          "fge": true
+        },
+        "sb": {
+          "count": 1,
+          "feature": "SB",
+          "fge": true
+        },
+        "dit-reg": {
+          "count": 1,
+          "feature": "DIT",
+          "fge": true
+        }
+      },
+      "filetype": 7,
+      "fixups": {
+        "ARM64E_USERLAND24": 4
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/sbin/launchd",
+      "size": 1236208,
+      "sha256": "2f0f739ba13cdac3e35b83bbaf317db02ea375fac611fe86b31d5d4f9f6c9593",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 622592,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 1800,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 574,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/usr/libexec/xpcproxy",
+      "size": 232736,
+      "sha256": "7aa97e2c09dd810b707853f6164a0d4f1209bf8cf9ae0f2dd57b4cc8256cb774",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 114688,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 258,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 14,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/bin/ls",
+      "size": 154208,
+      "sha256": "28b08eec0c290c130540ef76ee304e7560d92b2162e3a64888df5375a898637e",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 65536,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 106,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 23,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/bin/zsh",
+      "size": 1357312,
+      "sha256": "129b0c5ee23a21f52e62fc84099f6e8064db6bbf4270bbf15fd7a904d1c171f4",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 671744,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 1389,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 280,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+      "size": 158112,
+      "sha256": "804cf101ec081e4f07946acaca35d694d8e9d48b25a12c5b4e1a6ce348c9000d",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 65536,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 22,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 1
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
+      "size": 25767360,
+      "sha256": "23aa2a1e6d18245556a6599a1c55afeec270bcef8da718aad883801ad87ba168",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 12861440,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 42526,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 21327,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock",
+      "size": 10769792,
+      "sha256": "0e13feca187548ea9a1e1c90c69a3a011133d919be7e0d6ad56da5cd46b2ecc2",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 5439488,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 19330,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 9003,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Library/CoreServices/SystemUIServer.app/Contents/MacOS/SystemUIServer",
+      "size": 1173296,
+      "sha256": "846b45c58413456099632127d62f334d503b435d6f89fd41d3e3e69e44d453f9",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 573440,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 2618,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 1002,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow",
+      "size": 3251456,
+      "sha256": "61ab8ef95b86cc529d63943dca82c32d40f808b58ecc9f3907b86431c7e8684a",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 1622016,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 4279,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 509,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Applications/System Settings.app/Contents/MacOS/System Settings",
+      "size": 3408704,
+      "sha256": "864a83b85ab286e87c96fef55628184193cacdd0f6cc1b10627920eb04ea131e",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 1687552,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 6228,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 6008,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+      "size": 2398784,
+      "sha256": "dc8af3c42d67e492815e9f823904d2a1f7fed7643d57f741356973f4098403b7",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 1245184,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 4172,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 278,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/Applications/Safari.app/Contents/MacOS/Safari",
+      "size": 193664,
+      "sha256": "74a8a61974eaa85be7e0f129687411fc300c164233e35073741adb1aa71670d5",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 98304,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 1,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 1
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/usr/libexec/amfid",
+      "size": 439680,
+      "sha256": "c140d2803252ee984c7dc3ef47d9a7375960534b887511a65cba505c967f70e3",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 212992,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 801,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 385,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    },
+    {
+      "path": "/usr/sbin/kextd",
+      "missing": true
+    },
+    {
+      "path": "/usr/libexec/kernelmanagerd",
+      "size": 3874144,
+      "sha256": "a5b94c1f0c0d710ad52e64aed42a08d61bd71507a48880ce967ff4a9a7b10974",
+      "images": 1,
+      "arm64e_images": 1,
+      "arm64_slice": {
+        "offset": 1900544,
+        "arm64e": true
+      },
+      "counts": {
+        "pac-branch": {
+          "count": 8605,
+          "feature": "PAuth",
+          "fge": true
+        },
+        "pac-dp1": {
+          "count": 5055,
+          "feature": "PAuth",
+          "fge": true
+        }
+      },
+      "filetype": "MH_EXECUTE",
+      "fixups": {
+        "ARM64E_USERLAND24": 2
+      },
+      "slices": "x86_64 arm64e"
+    }
+  ],
+  "seconds": 37.1
+}

@@ -191,6 +191,28 @@ is_dit_reg(fge_u32 i)
 	return (i & 0xFFDFFFE0u) == 0xD51B42A0u;
 }
 
+/* FEAT_SHA3 / FEAT_SHA512: crypto data processing, 0xCE000000 group. */
+static int
+is_sha3(fge_u32 i)
+{
+	if ((i & 0xFFC08000u) == 0xCE000000u) {        /* EOR3, BCAX */
+		return 1;
+	}
+	if ((i & 0xFFE0FC00u) == 0xCE608C00u) {        /* RAX1 */
+		return 1;
+	}
+	return (i & 0xFFE00000u) == 0xCE800000u;       /* XAR */
+}
+
+static int
+is_sha512(fge_u32 i)
+{
+	if ((i & 0xFFE0F000u) == 0xCE608000u && BITS(i, 11, 10) != 3) {   /* SHA512H, H2, SU1 */
+		return 1;
+	}
+	return (i & 0xFFFFFC00u) == 0xCEC08000u;       /* SHA512SU0 */
+}
+
 fge_class_t
 fge_classify(fge_u32 i, int el)
 {
@@ -229,6 +251,12 @@ fge_classify(fge_u32 i, int el)
 	if (is_pstate_imm(i) || is_dit_reg(i)) {
 		return FGE_CLASS_PSTATE;
 	}
+	if (is_sha3(i)) {
+		return FGE_CLASS_SHA3;
+	}
+	if (is_sha512(i)) {
+		return FGE_CLASS_SHA512;
+	}
 	return FGE_CLASS_NONE;
 }
 
@@ -237,7 +265,7 @@ fge_class_name(fge_class_t cls)
 {
 	static const char *const names[FGE_CLASS_COUNT] = {
 		"none", "pac-dp1", "pacga", "pac-branch", "pac-load", "pac-keyreg",
-		"jscvt", "flagm", "flagm2", "sb", "rcpc2", "pstate",
+		"jscvt", "flagm", "flagm2", "sb", "rcpc2", "pstate", "sha3", "sha512",
 	};
 	return ((unsigned)cls < FGE_CLASS_COUNT) ? names[cls] : "?";
 }
@@ -415,6 +443,76 @@ emu_rcpc2(fge_ctx_t *c, fge_u32 i)
 	return FGE_HANDLED;
 }
 
+static inline fge_u64
+ror64(fge_u64 x, unsigned n)
+{
+	n &= 63;
+	return n ? (x >> n) | (x << (64 - n)) : x;
+}
+
+static fge_u64 sha_S0(fge_u64 x) { return ror64(x, 28) ^ ror64(x, 34) ^ ror64(x, 39); }
+static fge_u64 sha_S1(fge_u64 x) { return ror64(x, 14) ^ ror64(x, 18) ^ ror64(x, 41); }
+static fge_u64 sha_s0(fge_u64 x) { return ror64(x, 1) ^ ror64(x, 8) ^ (x >> 7); }
+static fge_u64 sha_s1(fge_u64 x) { return ror64(x, 19) ^ ror64(x, 61) ^ (x >> 6); }
+static fge_u64 sha_ch(fge_u64 x, fge_u64 y, fge_u64 z) { return (x & y) ^ (~x & z); }
+static fge_u64 sha_maj(fge_u64 x, fge_u64 y, fge_u64 z) { return (x & y) ^ (x & z) ^ (y & z); }
+
+/*
+ * Arm pseudocode of EOR3, BCAX, RAX1, XAR and SHA512H/H2/SU0/SU1 (lane 0 is
+ * the low 64 bits). The result is a full 128-bit write, as these have no
+ * 64-bit (D) form.
+ */
+static fge_result_t
+emu_sha(fge_ctx_t *c, fge_u32 i)
+{
+	fge_vreg_t *v = c->v, d, n, m, a, r;
+
+	if (v == 0) {
+		return FGE_NOT_HANDLED;
+	}
+	d = v[BITS(i, 4, 0)];
+	n = v[BITS(i, 9, 5)];
+	m = v[BITS(i, 20, 16)];
+	if ((i & 0xFFC08000u) == 0xCE000000u) {                   /* EOR3 / BCAX */
+		a = v[BITS(i, 14, 10)];
+		if (BITS(i, 21, 21) == 0) {
+			r.lo = n.lo ^ m.lo ^ a.lo;
+			r.hi = n.hi ^ m.hi ^ a.hi;
+		} else {
+			r.lo = n.lo ^ (m.lo & ~a.lo);
+			r.hi = n.hi ^ (m.hi & ~a.hi);
+		}
+	} else if ((i & 0xFFE00000u) == 0xCE800000u) {            /* XAR */
+		unsigned imm = BITS(i, 15, 10);
+		r.lo = ror64(n.lo ^ m.lo, imm);
+		r.hi = ror64(n.hi ^ m.hi, imm);
+	} else if ((i & 0xFFFFFC00u) == 0xCEC08000u) {            /* SHA512SU0 */
+		r.lo = d.lo + sha_s0(d.hi);
+		r.hi = d.hi + sha_s0(n.lo);
+	} else {
+		switch (BITS(i, 11, 10)) {
+		case 0:                                               /* SHA512H */
+			r.hi = d.hi + sha_S1(m.hi) + sha_ch(m.hi, n.lo, n.hi);
+			r.lo = d.lo + sha_S1(r.hi + m.lo) + sha_ch(r.hi + m.lo, m.hi, n.lo);
+			break;
+		case 1:                                               /* SHA512H2 */
+			r.hi = d.hi + sha_S0(m.lo) + sha_maj(n.lo, m.hi, m.lo);
+			r.lo = d.lo + sha_S0(r.hi) + sha_maj(r.hi, m.lo, m.hi);
+			break;
+		case 2:                                               /* SHA512SU1 */
+			r.lo = d.lo + sha_s1(n.lo) + m.lo;
+			r.hi = d.hi + sha_s1(n.hi) + m.hi;
+			break;
+		default:                                              /* RAX1 */
+			r.lo = n.lo ^ ((m.lo << 1) | (m.lo >> 63));
+			r.hi = n.hi ^ ((m.hi << 1) | (m.hi >> 63));
+			break;
+		}
+	}
+	v[BITS(i, 4, 0)] = r;
+	return FGE_HANDLED;
+}
+
 fge_result_t
 fge_emulate(fge_ctx_t *c, fge_u32 i, fge_class_t *out_cls)
 {
@@ -502,6 +600,11 @@ fge_emulate(fge_ctx_t *c, fge_u32 i, fge_class_t *out_cls)
 
 	case FGE_CLASS_RCPC2:
 		r = emu_rcpc2(c, i);
+		break;
+
+	case FGE_CLASS_SHA3:
+	case FGE_CLASS_SHA512:
+		r = emu_sha(c, i);
 		break;
 
 	case FGE_CLASS_PSTATE:

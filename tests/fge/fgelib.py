@@ -17,12 +17,12 @@ FGE_DIR = ROOT / "kernel" / "fge"
 BUILD = ROOT / "build" / "host"
 
 CLASSES = ["none", "pac-dp1", "pacga", "pac-branch", "pac-load", "pac-keyreg",
-           "jscvt", "flagm", "flagm2", "sb", "rcpc2", "pstate"]
+           "jscvt", "flagm", "flagm2", "sb", "rcpc2", "pstate", "sha3", "sha512"]
 
 NOT_HANDLED, HANDLED, MEM_FAULT = 0, 1, 2
 N, Z, C, V = 1 << 31, 1 << 30, 1 << 29, 1 << 28
 
-LLVM_MATTR = "+v8.5a,+pauth,+jsconv,+flagm,+altnzcv,+sb,+rcpc-immo,+ssbs,+rcpc"
+LLVM_MATTR = "+v8.5a,+pauth,+jsconv,+flagm,+altnzcv,+sb,+rcpc-immo,+ssbs,+rcpc,+sha3"
 
 
 def find_tool(name):

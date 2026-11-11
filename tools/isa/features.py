@@ -37,10 +37,10 @@ RULES = [
     ("dit-reg", 0xFFDFFFE0, 0xD51B42A0, "DIT", True),
     ("msr-ssbs", 0xFFFFF0FF, 0xD503403F, "SSBS(A55)", True),
     # FEAT_SHA3 / FEAT_SHA512 (v8.2 optional, not on these cores)
-    ("eor3-bcax", 0xFFC08000, 0xCE000000, "SHA3", False),
-    ("sha512-rax1", 0xFFE0F000, 0xCE608000, "SHA512/SHA3", False),
-    ("xar", 0xFFE00000, 0xCE800000, "SHA3", False),
-    ("sha512su0", 0xFFFFFC00, 0xCEC08000, "SHA512", False),
+    ("eor3-bcax", 0xFFC08000, 0xCE000000, "SHA3", True),
+    ("sha512-rax1", 0xFFE0F000, 0xCE608000, "SHA512/SHA3", True),
+    ("xar", 0xFFE00000, 0xCE800000, "SHA3", True),
+    ("sha512su0", 0xFFFFFC00, 0xCEC08000, "SHA512", True),
     # FEAT_FHM (FP16FML, v8.2 optional; present on Apple M1, not on these cores)
     ("fmlal-vec", 0xBF60FC00, 0x0E20EC00, "FHM", False),
     ("fmlal2-vec", 0xBF60FC00, 0x2E20CC00, "FHM", False),

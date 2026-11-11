@@ -2,20 +2,24 @@
 
 Status mengikuti aturan proyek: **WORKING** hanya dengan bukti pengujian. Tabel A adalah macOS di Xiaomi Pad 6, target repo ini. Tabel B adalah hasil upstream (iPadOS 17) sebagai pembanding, bukan klaim repo ini.
 
-Diperbarui: 2026-11-11.
+Diperbarui: 2026-11-11 (setelah audit Tahoe 26.x, lihat [tahoe-26-report.md](tahoe-26-report.md)). Target: **Tahoe 26.5 (25F71)**.
 
 ## A. macOS di Xiaomi Pad 6 (repo ini)
 
 | Area | Status | Bukti / alasan |
 | --- | --- | --- |
-| Boot macOS di pipa | NOT IMPLEMENTED | board pipa masih format 1; profil macOS belum bisa dipilih (audit.md, temuan 1) |
+| Boot macOS Tahoe di pipa | NOT IMPLEMENTED | board pipa masih format 1; profil OS belum dipakai (audit.md, temuan 1) |
+| Profil UniXNU `macos-26.5-25F71` | EXPERIMENTAL | nilai dari IPSW resmi; di-resolve oleh `unixnu status` (135 patch, nol patch Darwin 26); belum di-build |
+| Rantai patch XNU Tahoe 26.5 untuk pipa | WORKING (apply) | 118/118 apply di xnu-12377.121.6 (CI); belum di-build |
+| Mode null-PAC (`HAS_NULL_PAC`) | EXPERIMENTAL | patch apply; belum di-build |
+| pacstrip pada kernelcache Tahoe 26.5 asli | WORKING (host) | 778.340 instruksi PAC ditulis ulang, sisa 42 PACGA (bukti tahoe-26.5) |
+| Emulasi SHA3/SHA512 (FGE) | WORKING (host) | model Python + oracle QEMU |
+| Emulasi FCMA, FHM, FRINTTS | NOT IMPLEMENTED | FCMA/FHM ada di libBLAS, libSparseBLAS, libBNNS, libsystem_m (1×) |
 | Kernel XNU target macOS untuk pipa | NOT IMPLEMENTED | belum di-build |
-| Emulasi PAuth/JSCVT/FlagM/SB/LRCPC2/DIT (FGE), logika | WORKING (host) | `tests/fge`: 24 tes, termasuk 40.000 vektor acak FJCVTZS vs model rasional, fuzz decoder vs LLVM |
+| Emulasi PAuth/JSCVT/FlagM/SB/LRCPC2/DIT (FGE), logika | WORKING (host) | `tests/fge`, termasuk 40.000 vektor acak FJCVTZS vs model rasional, fuzz decoder vs LLVM |
 | FGE di dalam XNU | EXPERIMENTAL | patch apply bersih, glue lolos compile-check dengan shim; belum di-build atau di-boot |
 | Penulisan ulang PAC statis (pacstrip) | WORKING (host) | kesetaraan setiap rewrite dicek via decode LLVM; data-in-code tidak disentuh |
-| pacstrip pada kernel collection macOS asli | NOT IMPLEMENTED | butuh kernelcache 26C5035r dari IPSW pengguna |
-| Sensus ISA (audit) pada dyld shared cache macOS | NOT IMPLEMENTED | alat siap; butuh IPSW pengguna |
-| FCMA, SHA3/SHA512, FRINTTS | NOT IMPLEMENTED | menunggu hasil sensus |
+| Sensus ISA dyld shared cache Tahoe | WORKING (data) | 26.7.2 di runner macos-26; 26,9 juta PAC non-hint |
 | Userland macOS (launchd → WindowServer) | NOT IMPLEMENTED | masalah terbuka (feasibility.md §4) |
 | Finder, Dock, Menu Bar, System Settings, Terminal, Safari | NOT IMPLEMENTED | bergantung userland |
 | Display 2880×1800, rotasi, kecerahan | NOT IMPLEMENTED (macOS) | iPadOS memakai framebuffer firmware; macOS butuh `IOMFBUUID` (UniXNU macOS profile) |

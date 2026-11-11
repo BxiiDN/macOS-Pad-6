@@ -22,7 +22,7 @@ jobs:
       - name: SPDX headers on every source file
         run: |
           missing=$(git ls-files '*.c' '*.h' '*.py' '*.sh' '*.yml' '*.txt' \
-            | grep -v '^third_party/' \
+            | grep -v -e '^third_party/' -e '^docs/evidence/' \
             | xargs grep -L 'SPDX-License-Identifier' || true)
           if [ -n "$missing" ]; then echo "missing SPDX: $missing"; exit 1; fi
       - name: No Apple binaries or firmware in the tree
@@ -55,8 +55,13 @@ jobs:
           git -C "$RUNNER_TEMP/xnu" remote add origin https://github.com/apple-oss-distributions/xnu
           git -C "$RUNNER_TEMP/xnu" fetch -q --depth 1 origin "$XNU_REVISION"
           git -C "$RUNNER_TEMP/xnu" checkout -q FETCH_HEAD
+      - name: QEMU at a pinned commit (test oracle for SHA3/SHA512 emulation; not committed)
+        run: |
+          git clone -q --filter=blob:none --no-checkout https://github.com/qemu/qemu "$RUNNER_TEMP/qemu"
+          git -C "$RUNNER_TEMP/qemu" sparse-checkout set target/arm/tcg
+          git -C "$RUNNER_TEMP/qemu" checkout -q 29760efaf96bbe5928f8111881eddbf5ac06439e
       - name: Tests, cross builds, static ISA gate, patch check
-        run: XNU="$RUNNER_TEMP/xnu" scripts/test.sh
+        run: XNU="$RUNNER_TEMP/xnu" QEMU_SRC="$RUNNER_TEMP/qemu" scripts/test.sh
       - name: Tahoe 26.5 patch chain (UniXNU + SM8250 + null PAC + FGE) applies and is current
         run: |
           git submodule update --init --depth 1 third_party/UniXNU
@@ -64,6 +69,15 @@ jobs:
           python3 scripts/check_patch_chain.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU \
             --profile tahoe-26.5 --json chain-tahoe-26.5.json
           python3 scripts/gen_tahoe_patches.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU --check
+      - name: Tahoe 26.5 profile is current and resolves in UniXNU (hosted by the format 2 sheng board)
+        run: |
+          git clone -q https://github.com/UniXNU/UniXNU-sheng "$RUNNER_TEMP/sheng"
+          git -C "$RUNNER_TEMP/sheng" checkout -q f3e60cabad093c7330a1fe39ed478bbe7c821173
+          git clone -q https://github.com/UniXNU/UniXNU-sm8550-common "$RUNNER_TEMP/sm8550"
+          git -C "$RUNNER_TEMP/sm8550" checkout -q 97665e28578483082b674e8375a8fa65f4cf49cf
+          python3 scripts/make_tahoe_profile.py --unixnu third_party/UniXNU --evidence docs/evidence/tahoe-26.5 --check
+          python3 scripts/check_tahoe_profile.py --unixnu third_party/UniXNU --board "$RUNNER_TEMP/sheng" \
+            --soc "sm8550=$RUNNER_TEMP/sm8550"
       - name: CMake + Ninja build
         run: |
           sudo apt-get install -y -qq ninja-build

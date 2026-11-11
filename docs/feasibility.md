@@ -1,5 +1,7 @@
 # Kelayakan: macOS Tahoe asli di Xiaomi Pad 6
 
+> Diperbarui oleh audit Tahoe 26.x dengan data dari biner Apple asli: [tahoe-26-report.md](tahoe-26-report.md). Bila berbeda, laporan itu yang berlaku.
+
 Ringkas: hambatan inti **bukan** boot, layar, atau GPU. Untuk iPadOS 17 semua itu sudah dikerjakan upstream (lihat [audit.md](audit.md)). Hambatan inti adalah **set instruksi CPU**: seluruh macOS untuk ARM adalah arm64e (ARMv8.3+ dengan Pointer Authentication), sedangkan Snapdragon 870 adalah ARMv8.2.
 
 ## 1. Fitur CPU yang hilang
@@ -58,12 +60,7 @@ Selain PAC, frekuensi FCMA/SHA3/FRINTTS di userland belum diketahui. Audit IPSW 
 
 ## 5. Tahoe 26.x vs profil 27.3
 
-Profil macOS UniXNU menargetkan **macOS 27.3 (26C5035r)**, bukan Tahoe 26.x. Untuk Tahoe 26.x:
-
-- XNU Darwin 25 (xnu-12377) **sudah publik**, lebih dekat ke kernel aslinya daripada untuk 27.3;
-- tetapi dibutuhkan profil OS baru: pin IPSW + SHA-256 kernelcache, daftar root prelink, fixture binding kelas untuk build itu, dan seed Data. Semuanya hanya bisa diturunkan dari IPSW Tahoe yang diunduh pengguna sendiri.
-
-Hambatan PAC sama untuk kedua versi, karena macOS untuk ARM selalu arm64e.
+Profil macOS UniXNU menargetkan macOS 27.3. Untuk Tahoe, distribution-macOS `macos-265` menunjukkan bahwa **26.5 = xnu-12377.121.6**, revisi yang sama dengan yang dipakai UniXNU. Profil `macos-26.5-25F71` dibuat dari IPSW resmi dan hanya membuang 4 patch Darwin 26 (rinciannya di [tahoe-26-report.md](tahoe-26-report.md) §2). Hambatan PAC sama, karena macOS untuk ARM selalu arm64e.
 
 ## 6. Komponen proprietary Apple (tidak bisa dibuat ulang, tidak boleh didistribusikan)
 

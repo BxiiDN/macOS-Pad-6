@@ -69,6 +69,8 @@ typedef enum fge_class {
 	FGE_CLASS_SB,           /* SB (v8.5) */
 	FGE_CLASS_RCPC2,        /* LDAPUR*, STLUR* (v8.4) */
 	FGE_CLASS_PSTATE,       /* MSR DIT/SSBS, #imm; MRS/MSR DIT */
+	FGE_CLASS_SHA3,         /* EOR3, BCAX, RAX1, XAR (FEAT_SHA3) */
+	FGE_CLASS_SHA512,       /* SHA512H, SHA512H2, SHA512SU0, SHA512SU1 (FEAT_SHA512) */
 	FGE_CLASS_COUNT
 } fge_class_t;
 
