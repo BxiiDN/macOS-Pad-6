@@ -69,8 +69,10 @@ PKG = ROOT / "devices/pipa/package"
 VENDOR_GIT = "https://github.com/MiCode/kernel_devicetree"
 VENDOR_BRANCH = "pipa-t-oss"
 VENDOR_COMMIT = "623dd5bf821eaa865dc7296b33f0a1368218c77d"
+# In include order: pipa-sm8250.dtsi includes pipa-pinctrl.dtsi, then xiaomi-sm8250-common.dtsi, then its own body.
 VENDOR_FILES = ["qcom/kona-qupv3.dtsi", "qcom/kona-sde-display.dtsi", "qcom/dsi-panel-m82-36-02-0a-video.dtsi",
-                "qcom/dsi-panel-m82-42-02-0b-video.dtsi", "qcom/pipa-pinctrl.dtsi", "qcom/pipa-sm8250.dtsi"]
+                "qcom/dsi-panel-m82-42-02-0b-video.dtsi", "qcom/pipa-pinctrl.dtsi", "qcom/xiaomi-sm8250-common.dtsi",
+                "qcom/pipa-sm8250.dtsi"]
 VENDOR_PANELS = {"PNL_ID_TM": "dsi_m82_36_02_0a_dual_dphy_video", "PNL_ID_CSOT": "dsi_m82_42_02_0b_dual_dphy_video"}
 BINDINGS = {   # provider compatible -> dt-bindings header of its cell values
     "qcom,gcc-sm8250": ["clock/qcom,gcc-sm8250.h"],
@@ -114,6 +116,11 @@ def fetch(dest):
 def fetch_vendor(dest):
     dest = Path(dest)
     if (dest / ".git").exists() and run(["git", "-C", dest, "rev-parse", "HEAD"]).strip() == VENDOR_COMMIT:
+        sparse = dest / ".git/info/sparse-checkout"
+        want = "\n".join("/" + f for f in VENDOR_FILES) + "\n"
+        if not all(f"/{f}" in sparse.read_text().split() for f in VENDOR_FILES):   # a checkout from before the list grew
+            sparse.write_text(want)
+            run(["git", "-C", dest, "read-tree", "-mu", "HEAD"])
         return dest
     if dest.exists():
         shutil.rmtree(dest)
@@ -626,9 +633,33 @@ def struct_array(path, name):
     return [[_int(c) for c in row.split(",")] for row in re.findall(r"\{([^{}]+)\}", m.group(1))]
 
 
+def struct_rows(path, name, *headers):
+    """The rows of `name[] = {{"a", 1}, {MACRO, "b"}}`: strings unquoted, integers parsed, other words resolved as
+    integer #defines of the same file or of `headers` (the ones it includes)."""
+    text = Path(path).read_text()
+    m = re.search(rf"\b{re.escape(name)}\s*\[[^\]]*\]\s*=\s*\{{(.*?)\}};", text, re.S)
+    if not m:
+        raise KeyError(f"{path}: no array {name}")
+
+    def value(tok):
+        tok = tok.strip()
+        if tok.startswith('"'):
+            return tok[1:-1]
+        if re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", tok):
+            return _int(tok)
+        for h in (path, *headers):
+            try:
+                return macro(h, tok)
+            except KeyError:
+                pass
+        raise KeyError(f"{path}: {tok} is no integer #define here or in {[str(h) for h in headers]}")
+    return [[value(t) for t in re.findall(r'"[^"]*"|[^,\s][^,]*', row)] for row in re.findall(r"\{([^{}]+)\}", m.group(1))]
+
+
 def vendor_facts(vendor):
     src = Source.load(*[Path(vendor) / f for f in VENDOR_FILES])
     P, T, L = PKG / "PanelBoard.h", PKG / "TouchBoard.h", PKG / "BacklightBoard.h"
+    TV = PKG / "TouchVendor.h"
     rows = []
 
     def add(area, fact, repo_src, repo_fn, vendor_src, vendor_fn):
@@ -709,9 +740,46 @@ def vendor_facts(vendor):
         add("display", f"{tag}: ESD interrupt GPIOs", "package/PanelBoard.h PNL_GPIO_ESD, PNL_GPIO_ESD_SEC",
             lambda: [macro(P, "PNL_GPIO_ESD"), macro(P, "PNL_GPIO_ESD_SEC")], f"{where} mi,esd-err-irq-gpio(-sec)",
             lambda p=panel: [gpio(p(), "mi,esd-err-irq-gpio"), gpio(p(), "mi,esd-err-irq-gpio-sec")])
+        board = f"&{label} (xiaomi-sm8250-common.dtsi)"
+        add("display", f"{tag}: reset and TE GPIO", "package/PanelBoard.h PNL_GPIO_RESET, PNL_GPIO_TE",
+            lambda: [macro(P, "PNL_GPIO_RESET"), macro(P, "PNL_GPIO_TE")],
+            f"{board} qcom,platform-reset-gpio, qcom,platform-te-gpio",
+            lambda p=panel: [gpio(p(), "qcom,platform-reset-gpio"), gpio(p(), "qcom,platform-te-gpio")])
+        add("display", f"{tag}: TDDI (touch in the display driver)", "package/TouchVendor.h (NT36532 in TDDI mode)",
+            lambda: True, f"{where} mi,is-tddi-flag", lambda p=panel: p().flag("mi,is-tddi-flag"))
+        add("display", f"{tag}: dual DSI clocked from DSI0", "package/PanelBoard.h PNL_CLOCK_MASTER, PNL_DSI_COUNT",
+            lambda: [list(range(macro(P, "PNL_DSI_COUNT")))] * 2 +
+            [[f"mux_byte_clk{macro(P, 'PNL_CLOCK_MASTER')}", f"mux_pixel_clk{macro(P, 'PNL_CLOCK_MASTER')}"]],
+            f"&{label} (kona-sde-display.dtsi) qcom,dsi-ctrl-num, -phy-num, -select-clocks",
+            lambda p=panel: [p().u32s("qcom,dsi-ctrl-num"), p().u32s("qcom,dsi-phy-num"),
+                             p().strings("qcom,dsi-select-clocks")])
+        add("display", f"{tag}: supplies (name, uV, post-on ms)", "package/PanelBoard.h pnl_supplies",
+            lambda: struct_rows(P, "pnl_supplies"),
+            f"{label} qcom,panel-supply-entries -> dsi_panel_pwr_supply_m82 (pipa-sm8250.dtsi)",
+            lambda p=panel: [[e.string("qcom,supply-name"), e.u32("qcom,supply-min-voltage"),
+                              e.u32("qcom,supply-post-on-sleep") if "qcom,supply-post-on-sleep" in e.props else 0]
+                             for _, e in sorted(src.label(p().cells("qcom,panel-supply-entries")[0][1:])
+                                                .children.items())])
     add("display", "panel TE GPIO", "package/PanelBoard.h PNL_GPIO_TE", lambda: macro(P, "PNL_GPIO_TE"),
         "sde_dsi qcom,platform-te-gpio (kona-sde-display.dtsi)",
         lambda: gpio(src.label("sde_dsi"), "qcom,platform-te-gpio"))
+
+    def pin_state(label):
+        n = src.label(label)
+        cfg = n.child("config")
+        pull = "none" if cfg.flag("bias-disable") else "down" if cfg.flag("bias-pull-down") else \
+            "up" if cfg.flag("bias-pull-up") else "?"
+        return [pins(n), n.child("mux").string("function"), cfg.u32("drive-strength"), pull]
+    add("display", "panel reset pin, active state", "package/PanelBoard.h PNL_GPIO_RESET, PNL_RESET_ACTIVE_MA, no pull",
+        lambda: [[macro(P, "PNL_GPIO_RESET")], "gpio", macro(P, "PNL_RESET_ACTIVE_MA"), "none"],
+        "sde_dsi_active (pipa-pinctrl.dtsi), sde_dsi pinctrl-0", lambda: pin_state("sde_dsi_active"))
+    add("display", "panel reset pin, suspend state", "package/PanelBoard.h PNL_RESET_SUSPEND_MA, pull-down",
+        lambda: [[macro(P, "PNL_GPIO_RESET")], "gpio", macro(P, "PNL_RESET_SUSPEND_MA"), "down"],
+        "sde_dsi_suspend (pipa-pinctrl.dtsi), sde_dsi pinctrl-1", lambda: pin_state("sde_dsi_suspend"))
+    add("display", "sde_dsi pin states (reset, TE)", "package/PanelBoard.h (reset pin state is sde_dsi's)",
+        lambda: [["&sde_dsi_active", "&sde_te_active"], ["&sde_dsi_suspend", "&sde_te_suspend"]],
+        "sde_dsi pinctrl-0, pinctrl-1 (kona-sde-display.dtsi)",
+        lambda: [src.label("sde_dsi").cells("pinctrl-0"), src.label("sde_dsi").cells("pinctrl-1")])
     add("display", "panel DVDD rails (GPIO, uV)", "package/PanelBoard.h PNL_GPIO_DVDD_BUCK, _LDO, PNL_DVDD_UV",
         lambda: [macro(P, "PNL_GPIO_DVDD_BUCK"), macro(P, "PNL_GPIO_DVDD_LDO"), [macro(P, "PNL_DVDD_UV")]],
         "display_panel_dvdd_buck / _ldo gpio, regulator-min-microvolt (pipa-sm8250.dtsi)",
@@ -752,6 +820,29 @@ def vendor_facts(vendor):
     add("touch", "touch firmware by panel maker", "package/PanelBoard.h PNL_MAKER_CSOT, PNL_MAKER_TM",
         lambda: [macro(P, "PNL_MAKER_CSOT"), macro(P, "PNL_MAKER_TM")], "novatek@0 cfg_N novatek,display-maker",
         lambda: [c.u32("novatek,display-maker") for n, c in sorted(nvt().children.items()) if n.startswith("novatek,cfg_")])
+    add("touch", "touch firmware and MP images by maker", "package/TouchVendor.h tv_configs",
+        lambda: struct_rows(TV, "tv_configs", P), "novatek@0 cfg_N display-maker, fw-name, mp-name",
+        lambda: [[c.u32("novatek,display-maker"), c.string("novatek,fw-name"), c.string("novatek,mp-name")]
+                 for n, c in sorted(nvt().children.items()) if n.startswith("novatek,cfg_")])
+    add("touch", "touch config count", "package/TouchVendor.h tv_configs (rows)", lambda: len(struct_rows(TV, "tv_configs", P)),
+        "novatek@0 novatek,config-array-size", lambda: nvt().u32("novatek,config-array-size"))
+    add("touch", "touch interrupt GPIO and flags", "package/TouchVendor.h TV_IRQ_GPIO, TV_IRQ_FLAGS",
+        lambda: ["&tlmm", macro(TV, "TV_IRQ_GPIO"), macro(TV, "TV_IRQ_FLAGS")], "novatek@0 novatek,irq-gpio",
+        lambda: nvt().cells("novatek,irq-gpio"))
+    add("touch", "touch SPI rate (vendor)", "package/TouchVendor.h TV_SPI_HZ", lambda: macro(TV, "TV_SPI_HZ"),
+        "novatek@0 spi-max-frequency", lambda: nvt().u32("spi-max-frequency"))
+    add("touch", "touch has no reset GPIO of its own", "package/TouchVendor.h (reset through the TDDI panel line)",
+        lambda: False, "novatek@0 novatek,reset-gpio (commented out)", lambda: nvt().flag("novatek,reset-gpio"))
+    add("touch", "touch pen, doubled stylus resolution, MP from DT", "package/TouchVendor.h TV_PEN, TV_STYLUS_DOUBLE",
+        lambda: [bool(macro(TV, "TV_PEN")), bool(macro(TV, "TV_STYLUS_DOUBLE")), True],
+        "novatek@0 novatek,pen-support, stylus-resol-double, mp-support-dt",
+        lambda: [nvt().flag("novatek,pen-support"), nvt().flag("novatek,stylus-resol-double"),
+                 nvt().flag("novatek,mp-support-dt")])
+    add("touch", "touch sensor channels (each MP criteria)", "package/TouchVendor.h TV_X_CHANNELS, TV_Y_CHANNELS",
+        lambda: [[macro(TV, "TV_X_CHANNELS"), macro(TV, "TV_Y_CHANNELS")]] * 2,
+        "novatek@0 novatek-mp-criteria-* X_Channel, Y_Channel",
+        lambda: [[c.u32("X_Channel"), c.u32("Y_Channel")] for n, c in sorted(nvt().children.items())
+                 if n.startswith("novatek-mp-criteria")])
 
     # Backlight, the vendor view (compatible differs from mainline's kinetic,ktz8866)
     i2c = lambda: src.label("qupv3_se11_i2c")

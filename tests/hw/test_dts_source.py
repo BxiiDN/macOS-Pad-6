@@ -133,6 +133,21 @@ class StructArray(unittest.TestCase):
             with self.assertRaises(KeyError):
                 pipa_hw.struct_array(p, "other")
 
+    def test_mixed_rows(self):
+        # struct_rows: strings, integers and #defines of the file or of a header it includes (TouchVendor.h's
+        # tv_configs names PanelBoard.h's maker bytes).
+        with tempfile.TemporaryDirectory() as d:
+            h, p = Path(d) / "a.h", Path(d) / "b.h"
+            h.write_text("#define MAKER_A 0x42u\n")
+            p.write_text('#define LOCAL 7\nstatic const C cfg[] = {\n    {MAKER_A, "fw, a.bin", "mp_a.bin"},\n'
+                         '    {LOCAL, "fw_b.bin", "mp_b.bin"},\n};\n')
+            self.assertEqual(pipa_hw.struct_rows(p, "cfg", h),
+                             [[0x42, "fw, a.bin", "mp_a.bin"], [7, "fw_b.bin", "mp_b.bin"]])
+            with self.assertRaises(KeyError):
+                pipa_hw.struct_rows(p, "cfg")             # MAKER_A is not defined in b.h itself
+            with self.assertRaises(KeyError):
+                pipa_hw.struct_rows(p, "none", h)
+
 
 if __name__ == "__main__":
     unittest.main()

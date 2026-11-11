@@ -5,8 +5,9 @@
 // Mainline Linux has no pipa panel node, so the source is the vendor tree, every value public:
 //   VND MiCode/kernel_devicetree pipa-t-oss 623dd5bf821e: qcom/dsi-panel-m82-36-02-0a-video.dtsi and
 //       qcom/dsi-panel-m82-42-02-0b-video.dtsi (the two panel makers, identical timing), the &dsi_m82_* blocks of
-//       qcom/kona-sde-display.dtsi (dual DSI 0+1, PHY timings, topology), qcom/pipa-sm8250.dtsi (supplies, GPIOs) and
-//       sde_dsi in qcom/kona-sde-display.dtsi (TE GPIO). scripts/pipa_hw.py vendor checks every VND value below.
+//       qcom/kona-sde-display.dtsi (dual DSI 0+1, PHY timings, topology), qcom/pipa-sm8250.dtsi (supplies, GPIOs),
+//       qcom/xiaomi-sm8250-common.dtsi (reset and TE GPIO of the m82 nodes), qcom/pipa-pinctrl.dtsi (reset pin state)
+//       and sde_dsi in qcom/kona-sde-display.dtsi (TE GPIO). scripts/pipa_hw.py vendor checks every VND value below.
 #ifndef PIPA_PANEL_BOARD_H
 #define PIPA_PANEL_BOARD_H
 #include <stdint.h>
@@ -59,6 +60,31 @@
 #define PNL_DVDD_UV 1300000u
 #define PNL_BIAS_UV 5500000u
 #define PNL_BIAS_RAMP_US 233u
+// Reset (VND xiaomi-sm8250-common.dtsi &dsi_m82_*: qcom,platform-reset-gpio = <&tlmm 75 0>). The panel dtsi files
+// themselves name no reset GPIO; the board file adds it, and sde_dsi's pinctrl (pipa-pinctrl.dtsi sde_dsi_active /
+// _suspend) is the only pin state for it: gpio function, 8 mA, no pull while active; 2 mA, pull-down in suspend.
+// pinctrl-sm8250.c: PINGROUP(75, SOUTH, ...). In TDDI mode (mi,is-tddi-flag) this one line also resets the touch half
+// (TouchVendor.h: the touch node has no reset GPIO of its own).
+#define PNL_GPIO_RESET 75
+#define PNL_RESET_TILE 0x500000u       // SOUTH, as GeniI2cBoard.h GIB_TILE_SOUTH
+#define PNL_RESET_ACTIVE_MA 8u
+#define PNL_RESET_SUSPEND_MA 2u
+#define PNL_TLMM_PULL_NONE 0u          // TLMM GPIO_CFG bits 1:0
+#define PNL_TLMM_PULL_DOWN 1u
+// The two interfaces share DSI0's PLL (qcom,dsi-select-clocks = mux_byte_clk0, mux_pixel_clk0; ctrl and PHY <0 1>):
+// DSI1 is clocked from DSI0, so both halves are programmed and enabled together, left half on DSI0.
+#define PNL_CLOCK_MASTER 0u
+// Supplies in the order the panel driver turns them on (VND &dsi_panel_pwr_supply_m82 entries 0..4), with the sleep
+// after each in ms; then the reset sequence.
+typedef struct {
+    const char *name;
+    uint32_t uv;
+    uint8_t post_on_ms;
+} PnlSupply;
+static const PnlSupply pnl_supplies[] = {
+    {"vddio", 1800000u, 2}, {"dvddbuck", 1300000u, 0}, {"dvddldo", 1300000u, 2}, {"enp", 5500000u, 2}, {"enn", 5500000u, 0},
+};
+#define PNL_SUPPLIES (sizeof(pnl_supplies) / sizeof(pnl_supplies[0]))
 
 typedef struct {
     uint8_t level, ms;
@@ -130,5 +156,47 @@ static inline unsigned pnl_reset_ms(void) {
 
 // Frame buffer row pitch for a 32-bit format over the whole panel.
 static inline unsigned pnl_fb_stride(unsigned bytes_per_pixel) { return pnl_width() * bytes_per_pixel; }
+
+// The DSI link of one interface, derived from the tree's values (what a DSI controller and its PLL would be set to;
+// nothing here programs them). With DSC the controller's pixel clock runs at the compressed line rate:
+//   pixel clock = (DSC active + porches) * vtotal * fps          = 448 * 3122 * 120 = 167838720 Hz
+//   byte clock  = lane bit clock / 8                              = 125879040 Hz
+//   bit clock   = pixel clock * bpp / lanes                       = PNL_BITCLK_HZ
+static inline uint64_t pnl_dsc_pixel_clock(unsigned fps) {
+    return ((uint64_t)pnl_dsc_h_active() + PNL_HPW + PNL_HBP + PNL_HFP) * pnl_vtotal() * fps;
+}
+static inline uint64_t pnl_byte_clock(unsigned fps) { return pnl_bitclk(fps) / 8; }
+
+// DSC packing per interface: a slice line compresses to a chunk of slice_width * bpp / 8 bytes (450), the line to
+// slices * chunk (900), sent as slices / slice_per_pkt packets (1). 0 when not whole.
+static inline unsigned pnl_dsc_chunk_bytes(void) {
+    return (PNL_DSC_SLICE_WIDTH * PNL_DSC_BPP) % 8 ? 0 : PNL_DSC_SLICE_WIDTH * PNL_DSC_BPP / 8;
+}
+static inline unsigned pnl_dsc_line_bytes(void) { return pnl_slices_per_line() * pnl_dsc_chunk_bytes(); }
+static inline unsigned pnl_dsc_packets_per_line(void) {
+    unsigned s = pnl_slices_per_line();
+    return s && s % PNL_DSC_SLICE_PER_PKT == 0 ? s / PNL_DSC_SLICE_PER_PKT : 0;
+}
+// The compressed line occupies this many byte-clock cycles on the lanes (900 / 4 = 225); it equals the DSC active
+// width in pixel clocks times bpp / 8 / lanes, which ties the DSC parameters to the link timing.
+static inline unsigned pnl_dsc_line_byte_cycles(void) {
+    unsigned b = pnl_dsc_line_bytes();
+    return b % PNL_LANES ? 0 : b / PNL_LANES;
+}
+// Compression ratio uncompressed : compressed bits per pixel (3 for 24 : 8).
+static inline unsigned pnl_dsc_ratio(void) { return PNL_DSC_BPP && PNL_BPP % PNL_DSC_BPP == 0 ? PNL_BPP / PNL_DSC_BPP : 0; }
+
+// The reset pin's TLMM GPIO_CFG value for a pin state: function 0 (gpio, bits 5:2), drive (mA / 2 - 1, bits 8:6),
+// pull (bits 1:0). The output-enable bit (9) is the driver's, not the pin state's, and is left 0 here.
+static inline uint32_t pnl_reset_cfg(unsigned ma, unsigned pull) { return ((ma / 2u - 1u) & 7u) << 6 | (pull & 3u); }
+static inline uint32_t pnl_reset_ctl_offset(void) { return PNL_RESET_TILE + (uint32_t)PNL_GPIO_RESET * 0x1000u; }
+
+// Total supply settle time before the reset sequence starts, in ms.
+static inline unsigned pnl_supply_ms(void) {
+    unsigned ms = 0;
+    for (unsigned i = 0; i < PNL_SUPPLIES; i++)
+        ms += pnl_supplies[i].post_on_ms;
+    return ms;
+}
 
 #endif

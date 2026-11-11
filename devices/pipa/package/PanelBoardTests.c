@@ -76,6 +76,37 @@ int main(void) {
     CHECK(PNL_GPIO_ENP == BKL_GPIO_VDDPOS && PNL_GPIO_ENN == BKL_GPIO_VDDNEG);
     CHECK(sizeof(pnl_phy_timings) == 14);
 
-    puts("PASS: pipa panel (timing gives the tree's bit clock, DSC tiling, dfps porches, size, identity, reset)");
+    // DSI link with DSC, per interface: the pixel clock is the compressed line rate, and pixel clock * bpp / lanes and
+    // byte clock * 8 both give the tree's lane rate.
+    CHECK(pnl_dsc_pixel_clock(PNL_FPS) == 167838720ull);
+    CHECK(pnl_dsc_pixel_clock(PNL_FPS) * PNL_BPP / PNL_LANES == PNL_BITCLK_HZ);
+    CHECK(pnl_byte_clock(PNL_FPS) == 125879040ull && pnl_byte_clock(PNL_FPS) * 8 == PNL_BITCLK_HZ);
+    CHECK(pnl_dsc_pixel_clock(PNL_FPS) < pnl_pixel_clock(PNL_FPS));      // compressed: fewer pixel clocks a line
+    // DSC packing: 450-byte chunks, 900 bytes a line, one packet a line, 225 byte-clock cycles on 4 lanes; the same
+    // 225 as the DSC active width (300 pixel clocks) at 24 bpp over 4 lanes.
+    CHECK(pnl_dsc_chunk_bytes() == 450 && pnl_dsc_line_bytes() == 900 && pnl_dsc_packets_per_line() == 1);
+    CHECK(pnl_dsc_line_byte_cycles() == 225);
+    CHECK(pnl_dsc_line_byte_cycles() == pnl_dsc_h_active() * PNL_BPP / 8 / PNL_LANES);
+    CHECK(pnl_dsc_ratio() == 3 && PNL_H_ACTIVE / pnl_dsc_ratio() == pnl_dsc_h_active());
+    // Both halves: the whole panel's compressed payload per frame, 2 interfaces * 900 bytes * 2880 lines.
+    CHECK((uint64_t)PNL_DSI_COUNT * pnl_dsc_line_bytes() * PNL_V_ACTIVE == 5184000ull);
+    CHECK(PNL_CLOCK_MASTER == 0);
+
+    // Reset pin: TLMM 75 (SOUTH), gpio function; the active and suspend pin states as GPIO_CFG values.
+    CHECK(PNL_GPIO_RESET == 75 && pnl_reset_ctl_offset() == 0x54b000u);
+    CHECK(pnl_reset_cfg(PNL_RESET_ACTIVE_MA, PNL_TLMM_PULL_NONE) == 0xc0u);     // drive code 3, no pull
+    CHECK(pnl_reset_cfg(PNL_RESET_SUSPEND_MA, PNL_TLMM_PULL_DOWN) == 0x01u);    // drive code 0, pull-down
+    // It is none of the other panel or backlight lines.
+    CHECK(PNL_GPIO_RESET != PNL_GPIO_TE && PNL_GPIO_RESET != PNL_GPIO_ESD && PNL_GPIO_RESET != PNL_GPIO_ESD_SEC &&
+          PNL_GPIO_RESET != PNL_GPIO_ENP && PNL_GPIO_RESET != PNL_GPIO_ENN && PNL_GPIO_RESET != BKL_GPIO_ENABLE);
+
+    // Supplies: vddio first, the bias pair last, each at the tree's voltage; 6 ms of settling, then 31 ms of reset.
+    CHECK(PNL_SUPPLIES == 5 && pnl_supply_ms() == 6);
+    CHECK(pnl_supplies[0].uv == 1800000u && pnl_supplies[1].uv == PNL_DVDD_UV && pnl_supplies[2].uv == PNL_DVDD_UV);
+    CHECK(pnl_supplies[3].uv == PNL_BIAS_UV && pnl_supplies[4].uv == PNL_BIAS_UV);
+    CHECK(pnl_supply_ms() + pnl_reset_ms() == 37);
+
+    puts("PASS: pipa panel (timing gives the tree's bit clock, DSC tiling and packing, link clocks, dfps porches, size, "
+         "identity, reset pin and sequence, supplies)");
     return 0;
 }
