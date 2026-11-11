@@ -16,7 +16,7 @@ macOS Tahoe **26.5 (25F71)**, XNU **12377.121.6** (`ac9718fb1af6`), Xiaomi Pad 6
 | Board pipa UniXNU format 2 (`devices/pipa`) | selesai, di-resolve, dicek CI | `docs/board-migration.md`, artefak CI `pipa-board-status` |
 | Rantai patch | 120/120 apply ke xnu-12377.121.6 dalam urutan board | `scripts/check_patch_chain.py`, `pipa_unixnu.py check --xnu` |
 | Compile + link kernel native (arm64e) | **berhasil** (percobaan 2) | `docs/kernel-build.md`, run 42980033161 |
-| Prelink dengan kernelcache 26.5 | **gagal** (percobaan 3): `No room for 0x19c000 bytes in __PRELINK_TEXT`; percobaan 4 mengukur tata letak | `docs/kernel-build.md` |
+| Prelink dengan kernelcache 26.5 | **gagal** (percobaan 3, 4): `__TEXT` native 0x19c000 tidak muat; celah terbesar di `__PRELINK_TEXT` kurang 38.944 byte | `docs/kernel-build.md` percobaan 4 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Payload, boot image | belum | |
 | Boot di tablet | belum | |
@@ -49,7 +49,7 @@ Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (u
 
 ## Langkah berikutnya, berurutan
 
-1. Baca keluaran `scripts/prelink_layout.py` dari percobaan 4 (log langkah "Prelink layout"): celah terbesar di `__PRELINK_TEXT` dan selisihnya terhadap `__TEXT` native 0x19c000. Pilih salah satu perbaikan di `docs/kernel-build.md` (percobaan 3) berdasarkan angka itu, lalu push dengan `[kernel-prelink]`.
+1. Prelink: `__TEXT` native harus turun ≥ 38.944 byte agar muat di celah setelah `AppleARMWatchdogTimer` (angka di `docs/kernel-build.md`, percobaan 4). Baca ukuran section `__TEXT` dari laporan kernel percobaan 5 (log langkah "Report on the kernel"), pangkas yang terbesar yang bukan milik Apple (string diagnostik patch UniXNU/pipa, tabel FGE) atau pertimbangkan perubahan XnuPrelink, lalu push dengan `[kernel-prelink]`.
 2. Pasang `tools/isa/pacstrip` ke kernel collection hasil prelink di workflow, lalu gerbang `python3 -m tools.isa.audit KC --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`.
 3. `build payload` (butuh `UNIXNU_UNIQUE_CHIP_ID` sebagai secret repo; board `unique_chip_id = "required"`) dan `bootimg`. Tidak di-commit, tidak diunggah.
 4. Uji di tablet hanya oleh pemilik, dengan `fastboot boot` (tidak menulis apa pun). Target pertama: bar entry probe, lalu panic `Failed to mount root device`.

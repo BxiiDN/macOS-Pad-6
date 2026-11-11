@@ -42,7 +42,16 @@ def macho(data):
         if cmd == 0x19:   # LC_SEGMENT_64
             name = data[offset + 8:offset + 24].split(b"\0")[0].decode()
             vmaddr, vmsize = struct.unpack_from("<QQ", data, offset + 24)
-            segments.append({"name": name, "vmaddr": hex(vmaddr), "vmsize": vmsize})
+            nsects = struct.unpack_from("<I", data, offset + 64)[0]
+            sections = []
+            for i in range(nsects):
+                at = offset + 72 + 80 * i
+                sections.append({"name": data[at:at + 16].split(b"\0")[0].decode(),
+                                 "size": struct.unpack_from("<Q", data, at + 40)[0]})
+            row = {"name": name, "vmaddr": hex(vmaddr), "vmsize": vmsize}
+            if name == "__TEXT":   # what has to fit into the kernel collection's __PRELINK_TEXT (prelink_layout.py)
+                row["sections"] = sorted(sections, key=lambda x: -x["size"])
+            segments.append(row)
         offset += size
     sub = cpusubtype & 0xff
     return {"magic": "MH_MAGIC_64", "cputype": "arm64" if cputype == CPU_ARM64 else hex(cputype),

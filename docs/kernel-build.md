@@ -96,7 +96,26 @@ Yang **tidak** dibuktikan percobaan 2: kernel belum digabung dengan kext Tahoe 2
 - Arti: XnuPrelink menaruh `__TEXT` kernel native (0x19c000 = 1,61 MiB, kernel DEVELOPMENT) di celah `__PRELINK_TEXT` kernel collection J274AP yang tidak ditempati kext yang dipertahankan (closure dari prelink roots profil). Di KC 26.5 tidak ada celah sebesar itu. Ini batas tata letak, bukan kesalahan kompilasi.
 - Diagnostik untuk percobaan berikutnya: `scripts/prelink_layout.py` (dijalankan workflow bila prelink gagal) mencetak celah-celah itu, kext yang membatasinya, dan selisihnya.
 
-Pilihan perbaikan (belum dipilih; butuh angka dari diagnostik):
+Pilihan perbaikan yang dipertimbangkan (diukur di percobaan 4):
 1. Kecilkan `__TEXT` native (konfigurasi kernel, atau memindahkan section read-only besar keluar dari `__TEXT`).
-2. Kurangi kext yang dipertahankan di sekitar slot kernel bila tidak dibutuhkan jalur generik pipa (mengubah daftar root prelink; harus dibenarkan per kext).
+2. Kurangi kext yang dipertahankan di sekitar slot kernel.
 3. Ubah XnuPrelink agar boleh menaruh `__TEXT` native di luar `__PRELINK_TEXT` (perubahan di UniXNU, perlu dicek terhadap asumsi XNU tentang urutan segmen).
+
+### Percobaan 4 — 2026-11-11, commit `d811bcb`, run [42982647125](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42982647125): pengukuran tata letak prelink
+
+Compile + link berhasil lagi; prelink gagal dengan pesan yang sama; `scripts/prelink_layout.py` mengukur `__PRELINK_TEXT` kernel collection J274AP 26.5 (setelah rebase XnuPrelink, halaman 16 KiB):
+
+| | |
+| --- | --- |
+| `__PRELINK_TEXT` | `0xfffffe000700c000`, ukuran `0xcc0000` |
+| `__TEXT` `com.apple.kernel` asli | `0x120000` (1,13 MiB) di awal segmen |
+| `__TEXT` kernel native pipa | `0x19c000` (1,61 MiB) |
+| Kext yang dipertahankan (closure roots profil) | 87 |
+| Celah 1 (slot kernel): `0xfffffe000700c000` | `0x15d990`: kurang `0x3e670` (255.600 byte) |
+| Celah 2: setelah `AppleARMWatchdogTimer`, `0xfffffe000717b8a0` | `0x192f40`, terpakai setelah perataan 16 KiB `0x1927e0`: **kurang `0x9820` (38.944 byte, 2,3 %)** |
+| Pembatas celah 1 dan 2 | `com.apple.driver.AppleARMPlatform` (`0x102bb`) dan `com.apple.driver.AppleARMWatchdogTimer` (`0x1c50`), keduanya root profil |
+
+Kesimpulan dari angka ini:
+- Pilihan 2 tidak menolong: celah 1 dan 2 dipisahkan `AppleARMPlatform`, yang dibutuhkan jalur platform macOS UniXNU; tanpa `AppleARMWatchdogTimer` pun celah 2 tetap mulai di `0xfffffe000717c000` setelah perataan.
+- Pilihan 1 cukup bila `__TEXT` native turun sedikitnya **38.944 byte** (muat di celah 2), atau 255.600 byte untuk slot kernel asli. Laporan kernel (`kernel_report.py`) sekarang mencantumkan ukuran setiap section `__TEXT` untuk memilih apa yang dipangkas.
+- Pilihan 3 tetap mungkin, tetapi mengubah UniXNU.
