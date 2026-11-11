@@ -253,6 +253,10 @@ def main():
                       f"{st['build_path_prefix_bytes']:,} bytes in {st['build_path_strings']:,} strings", "",
                       "| Source | Bytes |", "| --- | ---: |"]
             lines += [f"| {k} | {v:,} |" for k, v in list(st["by_source"].items())[:25]]
+        for sec, objs in report["top_objects"].items():
+            if sec in ("__TEXT,__cstring", "__TEXT,__const", "__TEXT,__os_log"):
+                lines += ["", f"Largest contributors to `{sec}` (link map):", "", "| Object | Bytes |", "| --- | ---: |"]
+                lines += [f"| {k} | {v:,} |" for k, v in objs.items()]
         args.markdown.write_text("\n".join(lines) + "\n")
 
 
