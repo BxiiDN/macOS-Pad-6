@@ -31,7 +31,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from tools.isa import features, macho
+from tools.isa import fast, features, macho
 
 NOP = 0xD503201F
 RET = 0xD65F03C0
@@ -75,18 +75,20 @@ def rewrite_word(w):
     return None, rule                                  # PACGA
 
 
+PAC_RULES = [r[0] for r in features.RULES if r[3] == "PAuth"]
+
+
 def strip_bytes(data):
     buf = bytearray(data)
     done, kept, signed = Counter(), Counter(), []
-    for img in macho.images_of(bytes(buf)):
+    for img in macho.images_of(buf):
         if img.has_code_signature:
             signed.append(img.name)
-        for rng in img.ranges:
-            for off, w in macho.iter_words(buf, rng):
-                r = rewrite_word(w)
-                if r is None:
-                    continue
-                new, rule = r
+        _counts, hits = fast.scan(buf, img.ranges, record=PAC_RULES)
+        for offs in hits.values():
+            for off in offs:
+                w = struct.unpack_from("<I", buf, off)[0]
+                new, rule = rewrite_word(w)
                 if new is None:
                     kept[rule] += 1
                 else:

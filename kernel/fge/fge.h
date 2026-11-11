@@ -89,7 +89,9 @@ typedef struct fge_ctx {
 	fge_u32    *fpsr;       /* may be NULL */
 	fge_u32     fpcr;
 
-	/* Return 0 on success. size is 1, 2, 4 or 8; addr may be unaligned. */
+	/* Return 0 on success. size is 1, 2, 4 or 8; addr may be unaligned.
+	 * A naturally aligned access must be single-copy atomic, as the
+	 * emulated instruction was (LDAPUR/STLUR implement C11 atomics). */
 	int  (*read_mem)(void *cookie, fge_u64 addr, void *dst, unsigned size);
 	int  (*write_mem)(void *cookie, fge_u64 addr, const void *src, unsigned size);
 	void (*barrier)(void *cookie);   /* full DMB ISH; may be NULL */

@@ -145,7 +145,7 @@ def parse_fat(data):
 
 
 def parse_dyld_cache(data, name="dyld_shared_cache"):
-    if not data.startswith(b"dyld_v1"):
+    if data[:7] != b"dyld_v1":
         raise FormatError("not a dyld shared cache")
     arch = _cstr(data[7:16]).strip()
     mapping_off, mapping_count = struct.unpack_from("<II", data, 0x10)
@@ -160,7 +160,7 @@ def parse_dyld_cache(data, name="dyld_shared_cache"):
 def images_of(data, name=""):
     if len(data) < 8:
         raise FormatError("file too small")
-    if data.startswith(b"dyld_v1"):
+    if data[:7] == b"dyld_v1":
         return parse_dyld_cache(data, name)
     be = struct.unpack_from(">I", data, 0)[0]
     if be in (FAT_MAGIC, FAT_MAGIC_64):

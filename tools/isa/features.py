@@ -5,7 +5,7 @@ CPU definitions: +v8.2a +rcpc +dotprod +fullfp16 +ssbs on the A77 only).
 Apple's arm64e code targets ARMv8.3-A and later. Each rule is (name, mask,
 value, needs, fge): `needs` is the missing feature, `fge` says whether
 kernel/fge emulates it. The masks are cross-checked against LLVM by
-tests/isa/test_features.py.
+tests/isa/test_isa.py.
 
 SPDX-License-Identifier: BSD-2-Clause-Patent
 """
@@ -41,6 +41,11 @@ RULES = [
     ("sha512-rax1", 0xFFE0F000, 0xCE608000, "SHA512/SHA3", False),
     ("xar", 0xFFE00000, 0xCE800000, "SHA3", False),
     ("sha512su0", 0xFFFFFC00, 0xCEC08000, "SHA512", False),
+    # FEAT_FHM (FP16FML, v8.2 optional; present on Apple M1, not on these cores)
+    ("fmlal-vec", 0xBF60FC00, 0x0E20EC00, "FHM", False),
+    ("fmlal2-vec", 0xBF60FC00, 0x2E20CC00, "FHM", False),
+    ("fmlal-elem", 0xBFC0B400, 0x0F800000, "FHM", False),
+    ("fmlal2-elem", 0xBFC0B400, 0x2F808000, "FHM", False),
     # FEAT_FRINTTS (v8.5)
     ("frint-scalar", 0xFFBE7C00, 0x1E284000, "FRINTTS", False),
     ("frint-vector", 0x9FBFEC00, 0x0E21E800, "FRINTTS", False),

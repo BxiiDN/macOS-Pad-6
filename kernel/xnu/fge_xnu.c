@@ -2,12 +2,17 @@
  * XNU glue for FGE. See fge_xnu.h and docs/architecture.md.
  *
  * Requirements this file checks or relies on:
- *  - The kernel collection was rewritten by tools/pacstrip and verified by
- *    tools/isa_audit (no non-hint PAC instruction left in kernel or kexts).
+ *  - The kernel collection was rewritten by tools/isa/pacstrip and verified by
+ *    tools/isa/audit (no non-hint PAC instruction left in kernel or kexts).
  *    Otherwise every kernel function return traps, including this file's.
- *  - No signed thread state (HAS_APPLE_PAC off, as in UniXNU's BCM2837
- *    machine configuration): registers are written straight into the saved
- *    state.
+ *  - The saved state is not signed with PACGA. With HAS_APPLE_PAC (needed for
+ *    arm64e processes and kexts) that means the null-PAC mode of
+ *    profiles/macos-26.5 (HAS_NULL_PAC: the thread-state hash is constant), so
+ *    registers can be written straight into the saved state.
+ *  - Emulated accesses keep single-copy atomicity for naturally aligned 4- and
+ *    8-byte accesses (copyin_atomic*, copyout_atomic*, or one load/store in
+ *    the kernel); aligned 1- and 2-byte loads read the aligned 32-bit word that
+ *    holds them. Aligned 2-byte stores from user space are copied bytewise.
  *
  * Copyright (c) 2026, macOS-Pad-6 contributors.
  * SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -22,8 +27,8 @@
 #include <mach/arm/thread_status.h>
 #include <pexpert/pexpert.h>
 
-#if HAS_APPLE_PAC
-#error "FGE writes the saved state directly; a signed thread state (HAS_APPLE_PAC) needs MANIPULATE_SIGNED_THREAD_STATE here"
+#if HAS_APPLE_PAC && !HAS_NULL_PAC
+#error "FGE writes the saved state directly; a PACGA-signed thread state needs MANIPULATE_SIGNED_THREAD_STATE here"
 #endif
 
 uint64_t fge_xnu_counts[16];
@@ -46,25 +51,64 @@ fge_xnu_init(void)
 static int
 fge_read_user(void *cookie __unused, fge_u64 addr, void *dst, unsigned size)
 {
+	uint32_t w;
+	int err;
+
+	if (size == 8 && (addr & 7) == 0) {
+		return copyin_atomic64((user_addr_t)addr, (uint64_t *)dst);
+	}
+	if (size <= 4 && (addr & (size - 1)) == 0) {
+		/* One aligned 32-bit read holds the whole aligned 1, 2 or 4 bytes. */
+		err = copyin_atomic32((user_addr_t)(addr & ~3ull), &w);
+		if (err == 0) {
+			w >>= 8 * (unsigned)(addr & 3);
+			__builtin_memcpy(dst, &w, size);
+		}
+		return err;
+	}
 	return copyin((user_addr_t)addr, (char *)dst, size);
 }
 
 static int
 fge_write_user(void *cookie __unused, fge_u64 addr, const void *src, unsigned size)
 {
+	if (size == 8 && (addr & 7) == 0) {
+		uint64_t v;
+		__builtin_memcpy(&v, src, 8);
+		return copyout_atomic64(v, (user_addr_t)addr);
+	}
+	if (size == 4 && (addr & 3) == 0) {
+		uint32_t v;
+		__builtin_memcpy(&v, src, 4);
+		return copyout_atomic32(v, (user_addr_t)addr);
+	}
 	return copyout((const char *)src, (user_addr_t)addr, size);
 }
 
 static int
 fge_read_kern(void *cookie __unused, fge_u64 addr, void *dst, unsigned size)
 {
-	return copyin_kern((user_addr_t)addr, (char *)dst, size);
+	/* An aligned access is one load, as the original instruction was; a
+	 * bad kernel address faults here exactly as it would have there. */
+	switch ((addr & (size - 1)) == 0 ? size : 0) {
+	case 1: *(uint8_t *)dst = *(volatile uint8_t *)addr; return 0;
+	case 2: { uint16_t v = *(volatile uint16_t *)addr; __builtin_memcpy(dst, &v, 2); return 0; }
+	case 4: { uint32_t v = *(volatile uint32_t *)addr; __builtin_memcpy(dst, &v, 4); return 0; }
+	case 8: { uint64_t v = *(volatile uint64_t *)addr; __builtin_memcpy(dst, &v, 8); return 0; }
+	default: return copyin_kern((user_addr_t)addr, (char *)dst, size);
+	}
 }
 
 static int
 fge_write_kern(void *cookie __unused, fge_u64 addr, const void *src, unsigned size)
 {
-	return copyout_kern((const char *)src, (user_addr_t)addr, size);
+	switch ((addr & (size - 1)) == 0 ? size : 0) {
+	case 1: *(volatile uint8_t *)addr = *(const uint8_t *)src; return 0;
+	case 2: { uint16_t v; __builtin_memcpy(&v, src, 2); *(volatile uint16_t *)addr = v; return 0; }
+	case 4: { uint32_t v; __builtin_memcpy(&v, src, 4); *(volatile uint32_t *)addr = v; return 0; }
+	case 8: { uint64_t v; __builtin_memcpy(&v, src, 8); *(volatile uint64_t *)addr = v; return 0; }
+	default: return copyout_kern((const char *)src, (user_addr_t)addr, size);
+	}
 }
 
 static void
@@ -148,7 +192,8 @@ fge_xnu_handle(arm_context_t *context)
 	if ((unsigned)cls < 16) {
 		uint64_t n = os_atomic_inc(&fge_xnu_counts[cls], relaxed);
 		if (fge_mode == 2 && (n & 0xFFFFF) == 0) {
-			kprintf("fge: %s %llu (pc 0x%llx)\n", fge_class_name(cls), n, ss->pc);
+			kprintf("fge: %s %llu (pc 0x%llx)\n", fge_class_name(cls),
+			    (unsigned long long)n, (unsigned long long)ss->pc);
 		}
 	}
 	return true;

@@ -1,0 +1,80 @@
+# Tahoe 26.x audit on real Apple software, for docs/tahoe-26-report.md.
+#  host:        the macOS installed on the GitHub macos-26 runner (Apple Silicon)
+#  kernelcache: the kernelcache of an official UniversalMac IPSW, read by HTTP
+#               range requests from updates.cdn-apple.com (never the whole IPSW)
+# Only counts, names, versions and hashes are uploaded; no Apple code.
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+name: Tahoe audit
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "macOS versions whose IPSW kernelcache to audit (space separated)"
+        default: "26.5"
+      device_class:
+        description: "Board whose kernelcache to take (j274ap = Mac mini M1, the oldest Tahoe CPU)"
+        default: "j274ap"
+      product:
+        description: "Product type used to look up the IPSW list"
+        default: "Macmini9,1"
+permissions:
+  contents: read
+jobs:
+  host:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit the installed Tahoe
+        run: python3 -m tools.isa.tahoe_audit host evidence/host
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tahoe-host
+          path: evidence/host
+
+  kernelcache:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: UniXNU at the pinned revision (for the macOS 27.3 prelink roots)
+        run: git submodule update --init --depth 1 third_party/UniXNU
+      - name: Find the official IPSWs
+        env:
+          PRODUCT: ${{ inputs.product }}
+          VERSIONS: ${{ inputs.versions }}
+        run: |
+          curl -fsS "https://api.ipsw.me/v4/device/$PRODUCT?type=ipsw" -o ipsw-list.json
+          python3 - <<'EOF'
+          import json, os
+          fw = json.load(open("ipsw-list.json"))["firmwares"]
+          want = os.environ["VERSIONS"].split()
+          rows = []
+          for v in want:
+              hits = [f for f in fw if f["version"] == v]
+              if not hits:
+                  raise SystemExit(f"no IPSW for {v}: {sorted({f['version'] for f in fw})}")
+              f = hits[0]
+              if not f["url"].startswith("https://updates.cdn-apple.com/"):
+                  raise SystemExit(f"not an Apple CDN URL: {f['url']}")
+              rows.append(f"{v} {f['buildid']} {f['url']}")
+          open("ipsw-urls.txt", "w").write("\n".join(rows) + "\n")
+          print(open("ipsw-urls.txt").read())
+          EOF
+      - name: Extract and audit each kernelcache
+        env:
+          DEVICE_CLASS: ${{ inputs.device_class }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/ipsw
+          while read -r version build url; do
+            python3 -m tools.isa.ipsw list "$url" > "evidence/ipsw/members-$version-$build.txt"
+            python3 -m tools.isa.ipsw kernelcache "$url" --device-class "$DEVICE_CLASS" "kc-$build"
+            python3 -m tools.isa.tahoe_audit kernelcache "kc-$build" evidence/ipsw \
+              --prelink-roots third_party/UniXNU/profiles/os/macos-27.3-26C5035r/profile.toml
+          done < ipsw-urls.txt
+          cp ipsw-urls.txt evidence/ipsw/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tahoe-ipsw-kernelcache
+          path: evidence/ipsw

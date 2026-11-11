@@ -15,7 +15,7 @@ from tests.fge.test_fge_fuzz import disassemble
 from tools.isa import audit, features, macho, pacstrip
 
 RNG = random.Random(4242)
-MATTR = LLVM_MATTR + ",+complxnum,+sha3,+fptoint,+fullfp16"
+MATTR = LLVM_MATTR + ",+complxnum,+sha3,+fptoint,+fullfp16,+fp16fml"
 
 MNEMONICS = {
     "pac-dp1": {"pacia", "pacib", "pacda", "pacdb", "autia", "autib", "autda", "autdb",
@@ -37,6 +37,8 @@ MNEMONICS = {
     "eor3-bcax": {"eor3", "bcax"},
     "sha512-rax1": {"sha512h", "sha512h2", "sha512su1", "rax1"},
     "xar": {"xar"}, "sha512su0": {"sha512su0"},
+    "fmlal-vec": {"fmlal", "fmlsl"}, "fmlal2-vec": {"fmlal2", "fmlsl2"},
+    "fmlal-elem": {"fmlal", "fmlsl"}, "fmlal2-elem": {"fmlal2", "fmlsl2"},
     "frint-scalar": {"frint32z", "frint32x", "frint64z", "frint64x"},
     "frint-vector": {"frint32z", "frint32x", "frint64z", "frint64x"},
 }
