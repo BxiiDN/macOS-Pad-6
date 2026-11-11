@@ -1,0 +1,25 @@
+# Exploratory facts about the macOS installed on the GitHub macos-26 runner
+# (Tahoe on Apple Silicon). Prints metadata only; no Apple binary leaves the runner.
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+name: Tahoe runner probe
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-26
+    steps:
+      - name: Facts
+        run: |
+          set -x
+          sw_vers; uname -a; uname -v; sysctl -n kern.osversion kern.version
+          sysctl hw.optional | sort
+          sysctl -n machdep.cpu.brand_string hw.cputype hw.cpusubtype hw.model || true
+          python3 --version
+          ls -la /System/Volumes/Preboot/Cryptexes/OS/System/Library/dyld/ || true
+          ls -la /System/Library/dyld/ 2>/dev/null || true
+          ls -la /System/Library/KernelCollections/ || true
+          ls -la /System/Library/Kernels/ || true
+          sudo find /System/Volumes/Preboot -maxdepth 6 -name 'kernelcache*' 2>/dev/null | head
+          for f in /usr/lib/dyld /bin/ls /usr/sbin/sshd /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder /System/Library/CoreServices/Dock.app/Contents/MacOS/Dock /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer /usr/libexec/xpcproxy /sbin/launchd; do echo "$f: $(lipo -archs "$f" 2>&1)"; done
+          df -h / | tail -1
