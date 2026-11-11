@@ -1,0 +1,50 @@
+{
+  "ipsw": "https://updates.cdn-apple.com/2026SpringFCS/fullrestores/122-58869/DFB1CEEF-5619-4591-9924-E20DB2C8FED0/UniversalMac_26.5_25F71_Restore.ipsw",
+  "device_class": "j274ap",
+  "images": {
+    "OS": {
+      "member": "094-56453-087.dmg.aea",
+      "member_sha256": "512a9edb8027d0e10cee83d7c461c0ac2e5a6cc820ce0ea93e5a384a68842f43",
+      "aea": true,
+      "image_sha256": "402ec952199815a4c293112d4d5c64729d91d9c7616ac9a5668d1ce1823b3e6f",
+      "image_size": 13071548416,
+      "volumes": [
+        {
+          "name": "Macintosh HD",
+          "uuid": "47719F50-5527-44A3-9F59-8170528D8C14",
+          "roles": [
+            "System"
+          ]
+        }
+      ]
+    },
+    "Cryptex1,SystemOS": {
+      "member": "094-56679-089.dmg.aea",
+      "member_sha256": "33715c2db9448e5aed46692337096ac02b2e670afb948b2a4d70be2ee4e7156d",
+      "aea": true,
+      "image_sha256": "c775864e6d8cf6068daaef5d502f4b2e8c10c28a464df73395d13d8a44829706",
+      "image_size": 7096762368,
+      "volumes": [
+        {
+          "name": "CheerF25F71.arm64eSystemCryptex",
+          "uuid": "C7DFE43C-0A23-43F5-B3E2-471BEAC4539D",
+          "roles": []
+        }
+      ]
+    },
+    "Cryptex1,AppOS": {
+      "member": "094-56385-096.dmg",
+      "member_sha256": "3eb6ec4aab9f6e36aec4d298cf82ab68b02e8740954ec26933de59ddd521bd23",
+      "aea": false,
+      "image_sha256": "3eb6ec4aab9f6e36aec4d298cf82ab68b02e8740954ec26933de59ddd521bd23",
+      "image_size": 52428800,
+      "volumes": [
+        {
+          "name": "AppCryptex",
+          "uuid": "F894E20A-CE25-41F4-ABE2-C00E9E922B83",
+          "roles": []
+        }
+      ]
+    }
+  }
+}
