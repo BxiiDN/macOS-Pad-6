@@ -17,3 +17,6 @@ from UniXNU-sheng c7a0346, and the generated null-PAC and FGE patches moved from
 `README.md` is UniXNU-pipa's and describes the format 1 board and its iPadOS 17 port as it ran on the tablet; commands in
 it that pass `-D ../UniXNU-pipa` are for that repository. For this board use `scripts/pipa-unixnu.sh` at the repository
 root, which also passes the sources pinned in `feeds.toml` to UniXNU (`docs/board-migration.md`, gap G1).
+
+Exception in `package/`: `BacklightBoard.h` and `BacklightBoardTests.c` are new in macOS-Pad-6 (BSD-2-Clause-Patent),
+written from the public mainline Linux device tree and the KTZ8866 register map; nothing was copied from upstream code.

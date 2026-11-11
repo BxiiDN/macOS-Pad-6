@@ -44,7 +44,7 @@ jobs:
           EOF
       - name: Paths that devices/pipa/board.toml and its docs name exist
         run: |
-          for f in scripts/pipa-unixnu.sh scripts/pipa_unixnu.py docs/board-migration.md docs/kernel-build.md \
+          for f in scripts/pipa-unixnu.sh scripts/pipa_unixnu.py docs/board-migration.md docs/kernel-build.md docs/hardware-pipa.md \
                    devices/pipa/configs/pipa_macos26_defconfig devices/pipa/configs/pipa_defconfig devices/pipa/dts/pipa.dts \
                    devices/pipa/patches/xnu-12377/series devices/pipa/patches/xnu-12377/soc/series devices/pipa/patches/xnu/series; do
             test -e "$f" || { echo "missing: $f"; exit 1; }
@@ -95,6 +95,14 @@ jobs:
           sudo apt-get install -y -qq device-tree-compiler
           git -C third_party/UniXNU submodule update --init --depth 1
           python3 scripts/pipa_unixnu.py check --adt --xnu "$RUNNER_TEMP/xnu" --json pipa-board.json
+      - name: pipa hardware facts of the board code agree with mainline Linux's sm8250-xiaomi-pipa.dts
+        run: |
+          python3 scripts/pipa_hw.py fetch --linux "$RUNNER_TEMP/linux"
+          python3 scripts/pipa_hw.py compile --linux "$RUNNER_TEMP/linux" --out "$RUNNER_TEMP/pipa-mainline.dtb"
+          soc=$(ls -d build/pipa-unixnu/feeds/sm8250-* | head -n 1)
+          python3 scripts/pipa_hw.py check --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --soc "$soc" --json pipa-hw-check.json
+          python3 scripts/pipa_hw.py inventory --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --linux "$RUNNER_TEMP/linux" \
+            --markdown docs/evidence/hardware/pipa-mainline-inventory.md --check
       - name: Tahoe 26.5 profile also resolves on an upstream format 2 board (UniXNU-sheng, cross-check)
         run: |
           git clone -q https://github.com/UniXNU/UniXNU-sheng "$RUNNER_TEMP/sheng"
@@ -120,4 +128,20 @@ jobs:
           path: |
             pipa-board.json
             chain-tahoe-26.5.json
+            pipa-hw-check.json
           if-no-files-found: ignore
+
+  # The host tests of the board package (devices/pipa/package), on x86 and on arm64. A650GmuTests links
+  # UniXNU's AdrenoFirmware kit, whose HFI transport is written for little-endian AArch64 only, so it runs on
+  # the arm64 runner. These test the board code's logic against modelled registers, not the tablet.
+  board-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Board package host tests
+        run: scripts/test_board_package.sh
+
