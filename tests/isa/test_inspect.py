@@ -100,9 +100,13 @@ class DyldCacheTest(unittest.TestCase):
             return h
 
         def lib(textaddr, code):
-            seg = segment("__TEXT", textaddr, 0x1000, 0, 0x1000)
+            # __text holds the code; a __cstring after it holds a word that looks like RETAB.
+            seg = segment("__TEXT", textaddr, 0x1000, 0, 0x1000,
+                          sections=[("__text", textaddr + 0x200, 4 * len(code), 0, macho.S_ATTR_PURE_INSTRUCTIONS),
+                                    ("__cstring", textaddr + 0x200 + 4 * len(code), 4, 0, 2)])
             mh = macho_header(6, [seg])
-            return mh.ljust(0x100, b"\0") + b"".join(struct.pack("<I", w) for w in code)
+            return (mh.ljust(0x200, b"\0") + b"".join(struct.pack("<I", w) for w in code)
+                    + struct.pack("<I", RETAB))
 
         liba = lib(base + 0x1000, [NOP, RETAB, FJCVTZS, RETAB])
         libb = lib(base + 0x10000, [FJCVTZS, FJCVTZS, NOP])
@@ -138,6 +142,17 @@ class DyldCacheTest(unittest.TestCase):
                 for k, v in inspect_macho.attribute(index, vms).items():
                     seen[k] = seen.get(k, 0) + v
             self.assertEqual(seen, {"/usr/lib/libA.dylib": 1, "/System/Library/Frameworks/B.framework/B": 2})
+            per_image = {}
+            for name, ranges in cache.image_code():
+                c = {}
+                for path, rs in ranges.items():
+                    counts, _ = fast.scan(cache._file(path), rs)
+                    for k, v in counts.items():
+                        c[k] = c.get(k, 0) + v
+                per_image[name] = c
+            # Only __text counts: the RETAB-looking word in __cstring is not code.
+            self.assertEqual(per_image, {"/usr/lib/libA.dylib": {"pac-branch": 2, "jscvt": 1},
+                                         "/System/Library/Frameworks/B.framework/B": {"jscvt": 2}})
             self.assertEqual(dict(cache.slide_versions()), {3: 1})
 
 

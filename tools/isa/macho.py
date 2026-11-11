@@ -55,8 +55,15 @@ def _cstr(b):
     return b.split(b"\0", 1)[0].decode("utf-8", "replace")
 
 
-def parse_macho(data, base=0, name="", limit=None):
-    """Parse the thin Mach-O at data[base:]; return [Image] (several for filesets)."""
+def parse_macho(data, base=0, name="", container=None):
+    """Parse the thin Mach-O at data[base:]; return [Image] (several for filesets).
+
+    File offsets inside the image are relative to `container` (the start of a
+    fat slice, or of the kernel collection a fileset entry belongs to);
+    by default to `base`. For a fileset only the entries are returned, not the
+    collection header's own segments, which span the same code."""
+    if container is None:
+        container = base
     if len(data) < base + 32:
         raise FormatError("truncated header")
     magic, cputype, cpusub, filetype, ncmds, sizeofcmds, _flags, _res = struct.unpack_from(
@@ -89,7 +96,7 @@ def parse_macho(data, base=0, name="", limit=None):
                 if offset and size:
                     # Offsets inside a fat slice are relative to the slice; inside a
                     # fileset they are relative to the collection (base of the file).
-                    fo = offset + (0 if limit == "fileset" else base)
+                    fo = offset + container
                     sections.append((addr, size, fo))
                     if flags & (S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS):
                         ranges.append(CodeRange(fo, size, f"{segname},{sectname}"))
@@ -97,8 +104,7 @@ def parse_macho(data, base=0, name="", limit=None):
         elif cmd == LC_DATA_IN_CODE:
             dataoff, datasize = struct.unpack_from("<II", data, off + 8)
             for k in range(0, datasize, 8):
-                d_off, d_len, _kind = struct.unpack_from("<IHH", data,
-                                                         dataoff + (0 if limit == "fileset" else base) + k)
+                d_off, d_len, _kind = struct.unpack_from("<IHH", data, dataoff + container + k)
                 dic_raw.append((d_off, d_len))
         elif cmd == LC_CODE_SIGNATURE:
             signed = True
@@ -120,11 +126,11 @@ def parse_macho(data, base=0, name="", limit=None):
     for r in ranges:
         r.exclude = [(o, n) for o, n in dic if o < r.offset + r.size and o + n > r.offset]
     images = []
-    if ranges:
-        images.append(Image(name or "main", base, cpusub & 0xFF, filetype, ranges, signed))
     if filetype == MH_FILESET:
         for fileoff, ename in entries:
-            images += parse_macho(data, fileoff, ename, limit="fileset")
+            images += parse_macho(data, container + fileoff, ename, container=container)
+    elif ranges:
+        images.append(Image(name or "main", base, cpusub & 0xFF, filetype, ranges, signed))
     return images
 
 
@@ -140,7 +146,7 @@ def parse_fat(data):
             cputype, cpusub, offset, _size, _align = struct.unpack_from(">iiIII", data, 8 + 20 * k)
         if cputype == CPU_TYPE_ARM64:
             sub = "arm64e" if (cpusub & 0xFF) == 2 else "arm64"
-            images += parse_macho(data, offset, f"slice:{sub}")
+            images += parse_macho(data, offset, f"slice:{sub}", container=offset)
     return images
 
 

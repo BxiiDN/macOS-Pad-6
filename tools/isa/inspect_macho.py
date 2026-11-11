@@ -47,10 +47,11 @@ def load_commands(data, base):
         off += size
 
 
-def fileset_entries(data):
-    """[(entry id, file offset, vmaddr)] of an MH_FILESET kernel collection."""
+def fileset_entries(data, base=0):
+    """[(entry id, file offset, vmaddr)] of an MH_FILESET kernel collection at data[base:].
+    File offsets are relative to base."""
     out = []
-    for cmd, off, size in load_commands(data, 0):
+    for cmd, off, size in load_commands(data, base):
         if cmd == macho.LC_FILESET_ENTRY:
             vmaddr, fileoff, name_off = struct.unpack_from("<QQI", data, off + 8)
             out.append((_cstr(data[off + name_off:off + size]), fileoff, vmaddr))
@@ -146,6 +147,38 @@ class DyldCache:
                 for addr, size, fo, p, initp, *_r in self.mappings
                 if p == path and initp & macho.VM_PROT_EXECUTE and size]
 
+    def image_code(self):
+        """[(install name, {cache file: [CodeRange]})] from each image's instruction
+        sections (S_ATTR_PURE/SOME_INSTRUCTIONS), located through the mappings.
+        This leaves out the strings and constants that share __TEXT."""
+        out = []
+        for addr, name in self.images:
+            path, off = self.locate(addr)
+            if path is None:
+                continue
+            buf = self._file(path)
+            ranges = {}
+            try:
+                for cmd, lc, _size in load_commands(buf, off):
+                    if cmd != macho.LC_SEGMENT_64:
+                        continue
+                    nsects = struct.unpack_from("<I", buf, lc + 64)[0]
+                    for k in range(nsects):
+                        s = lc + 72 + 80 * k
+                        saddr, ssize = struct.unpack_from("<QQ", buf, s + 32)
+                        flags = struct.unpack_from("<I", buf, s + 64)[0]
+                        if not flags & (macho.S_ATTR_PURE_INSTRUCTIONS | macho.S_ATTR_SOME_INSTRUCTIONS):
+                            continue
+                        spath, soff = self.locate(saddr)
+                        if spath is None or not ssize:
+                            continue
+                        sect = _cstr(buf[s:s + 16])
+                        ranges.setdefault(spath, []).append(macho.CodeRange(soff, ssize, sect))
+            except (macho.FormatError, struct.error):
+                continue
+            out.append((name, ranges))
+        return out
+
     def slide_versions(self):
         return Counter(v for *_x, v, _f in self.mappings if v is not None)
 
@@ -186,3 +219,24 @@ def attribute(index, vmaddrs):
         else:
             out["(outside any image __TEXT)"] += 1
     return out
+
+
+def arm64_slice(data):
+    """(base, cpusubtype) of the arm64/arm64e Mach-O in a thin or fat file, or (None, None)."""
+    be = struct.unpack_from(">I", data, 0)[0]
+    if be in (macho.FAT_MAGIC, macho.FAT_MAGIC_64):
+        wide = be == macho.FAT_MAGIC_64
+        nfat = struct.unpack_from(">I", data, 4)[0]
+        best = (None, None)
+        for k in range(nfat):
+            if wide:
+                ct, cs, off = struct.unpack_from(">iiQ", data, 8 + 32 * k)
+            else:
+                ct, cs, off = struct.unpack_from(">iiI", data, 8 + 20 * k)
+            if ct == macho.CPU_TYPE_ARM64 and (best[0] is None or cs & 0xFF == 2):
+                best = (off, cs & 0xFF)
+        return best
+    magic, ct, cs = struct.unpack_from("<Iii", data, 0)
+    if magic == macho.MH_MAGIC_64 and ct == macho.CPU_TYPE_ARM64:
+        return 0, cs & 0xFF
+    return None, None

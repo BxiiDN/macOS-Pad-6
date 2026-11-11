@@ -57,6 +57,13 @@ jobs:
           git -C "$RUNNER_TEMP/xnu" checkout -q FETCH_HEAD
       - name: Tests, cross builds, static ISA gate, patch check
         run: XNU="$RUNNER_TEMP/xnu" scripts/test.sh
+      - name: Tahoe 26.5 patch chain (UniXNU + SM8250 + null PAC + FGE) applies and is current
+        run: |
+          git submodule update --init --depth 1 third_party/UniXNU
+          python3 -m tools.isa.gen_rules --check
+          python3 scripts/check_patch_chain.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU \
+            --profile tahoe-26.5 --json chain-tahoe-26.5.json
+          python3 scripts/gen_tahoe_patches.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU --check
       - name: CMake + Ninja build
         run: |
           sudo apt-get install -y -qq ninja-build

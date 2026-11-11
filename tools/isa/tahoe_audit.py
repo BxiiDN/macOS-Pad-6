@@ -78,28 +78,67 @@ def pac_rewrite_stats(buf, images):
     return {"rewritten": dict(done), "left_for_fge": dict(kept)}
 
 
-def audit_macho_file(path, rewrite=False, entries=False):
+def disassembler():
+    for cand in ("llvm-mc", "/opt/homebrew/opt/llvm/bin/llvm-mc", "/usr/local/opt/llvm/bin/llvm-mc"):
+        p = subprocess.run(["sh", "-c", f"command -v {cand}"], capture_output=True, text=True)
+        if p.returncode == 0 and p.stdout.strip():
+            return p.stdout.strip()
+    for v in range(22, 14, -1):
+        cand = f"/opt/homebrew/opt/llvm@{v}/bin/llvm-mc"
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
+def contexts(buf, offsets, limit=8, around=3):
+    """Disassembly of a few instructions around sample hits: is the hit inside real code?
+    Mnemonics only are kept (no bytes)."""
+    mc = disassembler()
+    if not mc or not offsets:
+        return []
+    step = max(1, len(offsets) // limit)
+    out = []
+    for off in offsets[::step][:limit]:
+        words = [struct.unpack_from("<I", buf, o)[0] for o in range(off - 4 * around, off + 4 * around + 4, 4)
+                 if 0 <= o <= len(buf) - 4]
+        src = "".join(" ".join(f"0x{(w >> s) & 0xFF:02x}" for s in (0, 8, 16, 24)) + "\n" for w in words)
+        p = subprocess.run([mc, "--disassemble", "-triple=arm64e-apple-macos", "-mattr=+v8.5a,+complxnum,"
+                            "+sha3,+fp16fml,+fptoint,+pauth,+jsconv,+rcpc-immo,+flagm,+sb,+altnzcv"],
+                           input=src, capture_output=True, text=True)
+        lines = [ln.split("//")[0].strip().split("\t")[0] for ln in p.stdout.splitlines()
+                 if ln.strip() and not ln.strip().startswith(".")]
+        bad = p.stderr.count("invalid instruction encoding")
+        out.append(" ; ".join(lines) + (f"  [{bad} undecodable]" if bad else ""))
+    return out
+
+
+def audit_macho_file(path, rewrite=False, entries=False, sample=()):
     buf = mm_open(path)
     try:
         images = macho.images_of(buf, os.path.basename(path))
         counts = Counter()
+        hits_all = {r: [] for r in sample}
         for img in images:
-            c, _ = fast.scan(buf, img.ranges)
+            c, hits = fast.scan(buf, img.ranges, record=sample)
             counts.update(c)
+            for r, offs in hits.items():
+                hits_all[r] += offs
+        base, sub = inspect_macho.arm64_slice(buf)
         out = {"path": path, "size": len(buf), "sha256": hashlib.sha256(buf).hexdigest(),
                "images": len(images), "arm64e_images": sum(i.cpusubtype == 2 for i in images),
+               "arm64_slice": None if base is None else {"offset": base, "arm64e": sub == 2},
                "counts": summarize_counts(counts)}
-        head = struct.unpack_from("<I", buf, 0)[0]
-        if head == macho.MH_MAGIC_64:
-            ftype = struct.unpack_from("<I", buf, 12)[0]
+        if base is not None:
+            ftype = struct.unpack_from("<I", buf, base + 12)[0]
             out["filetype"] = {2: "MH_EXECUTE", 6: "MH_DYLIB", 0xB: "MH_KEXT_BUNDLE",
                                0xC: "MH_FILESET"}.get(ftype, ftype)
-            out["fixups"] = dict(inspect_macho.fixup_kind(buf))
+            out["fixups"] = dict(inspect_macho.fixup_kind(buf, base))
             if ftype == macho.MH_FILESET and entries:
-                ents = inspect_macho.fileset_entries(buf)
-                out["fileset_entries"] = [e[0] for e in ents]
+                out["fileset_entries"] = [e[0] for e in inspect_macho.fileset_entries(buf, base)]
         if rewrite:
             out["pacstrip"] = pac_rewrite_stats(buf, images)
+        if sample:
+            out["contexts"] = {r: contexts(buf, offs) for r, offs in hits_all.items() if offs}
         return out
     finally:
         buf.close()
@@ -133,31 +172,41 @@ def host(out_dir):
     rep["dyld_cache_files"] = sorted(os.path.basename(p) for d in DYLD_DIRS for p in glob.glob(f"{d}/dyld_shared_cache_*"))
     if main:
         cache = inspect_macho.DyldCache(main, mm_open)
-        index = cache.text_index()
         totals, per_image = Counter(), {r: Counter() for r in NON_PAC}
-        for path in cache.subcaches:
-            ranges = cache.code_ranges(path)
-            if not ranges:
-                continue
-            buf = cache._file(path)
-            c, hits = fast.scan(buf, ranges, record=NON_PAC)
-            totals.update(c)
-            for rule, offs in hits.items():
-                vms = [cache.file_offset_to_vm(path, o) for o in offs]
-                per_image[rule].update(inspect_macho.attribute(index, [v for v in vms if v is not None]))
+        samples = {r: [] for r in NON_PAC}
+        code_bytes = 0
+        for name, ranges in cache.image_code():
+            for path, rs in ranges.items():
+                buf = cache._file(path)
+                code_bytes += sum(r.size for r in rs)
+                c, hits = fast.scan(buf, rs, record=NON_PAC)
+                totals.update(c)
+                for rule, offs in hits.items():
+                    if offs:
+                        per_image[rule][name] += len(offs)
+                        if len(samples[rule]) < 64:
+                            samples[rule] += [(path, o) for o in offs[:4]]
+        ctx = {}
+        for rule, sm in samples.items():
+            if sm:
+                ctx[rule] = [c for p, o in sm[::max(1, len(sm) // 6)][:6]
+                             for c in contexts(cache._file(p), [o], limit=1)]
         rep["dyld_cache"] = {
             "main": str(main), "arch": cache.arch, "subcaches": [p.name for p in cache.subcaches],
             "images": len(cache.images), "os_version": f"{cache.os_version >> 16}.{(cache.os_version >> 8) & 0xFF}.{cache.os_version & 0xFF}",
             "slide_info_versions": dict(cache.slide_versions()),
-            "code_bytes": sum(m[1] for m in cache.mappings if m[4] & macho.VM_PROT_EXECUTE),
+            "code_bytes": code_bytes,
             "counts": summarize_counts(totals),
             "top_images": {r: c.most_common(25) for r, c in per_image.items() if c},
             "images_using": {r: len(c) for r, c in per_image.items() if c},
+            "contexts": ctx,
         }
 
     # kernels and kernel collections on disk
-    rep["kernels"] = [audit_macho_file(p, rewrite=True) for p in sorted(glob.glob("/System/Library/Kernels/kernel*"))]
-    rep["kernel_collections"] = [audit_macho_file(p, rewrite=True, entries=True)
+    sample = [r for r in NON_PAC if not FGE_OF.get(r, True)]
+    rep["kernels"] = [audit_macho_file(p, rewrite=True, sample=sample)
+                      for p in sorted(glob.glob("/System/Library/Kernels/kernel*"))]
+    rep["kernel_collections"] = [audit_macho_file(p, rewrite=True, entries=True, sample=sample)
                                  for p in sorted(glob.glob("/System/Library/KernelCollections/*.kc"))]
     exes = []
     for p in KEY_EXECUTABLES:
@@ -177,7 +226,8 @@ def kernelcache(kc_dir, out_dir, roots_file=None):
     path = str(Path(kc_dir) / info["kernelcache"])
     rep = {"generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "kind": "ipsw-kernelcache",
            "source": info}
-    rep["audit"] = audit_macho_file(path, rewrite=True, entries=True)
+    rep["audit"] = audit_macho_file(path, rewrite=True, entries=True,
+                                    sample=[r for r in NON_PAC if not FGE_OF.get(r, True)])
     buf = mm_open(path)
     try:
         amfi = None
@@ -227,6 +277,10 @@ def markdown(rep):
             for rule, n in dc["images_using"].items():
                 top = ", ".join(f"{Path(name).name} {k}" for name, k in dc["top_images"][rule][:8])
                 lines.append(f"- **{rule}** in {n} images: {top}")
+            lines += ["", "Sample contexts (disassembly around hits; mnemonics only):", ""]
+            for rule, cx in dc.get("contexts", {}).items():
+                for c in cx[:3]:
+                    lines.append(f"- {rule}: `{c}`")
             lines.append("")
         for title, key in (("Kernels", "kernels"), ("Kernel collections", "kernel_collections")):
             lines += [f"## {title}", ""]
@@ -235,6 +289,10 @@ def markdown(rep):
                           f"pacstrip {k.get('pacstrip')}" + (f"; {len(k['fileset_entries'])} fileset entries"
                                                              if k.get("fileset_entries") else ""), "",
                           _table(k["counts"]), ""]
+                for rule, cx in k.get("contexts", {}).items():
+                    for c in cx[:2]:
+                        lines.append(f"- {rule}: `{c}`")
+                lines.append("")
         lines += ["## Executables", "", "| path | slices | fixups | non-PAC rules |", "| --- | --- | --- | --- |"]
         for e in rep["executables"]:
             if e.get("missing"):
@@ -255,6 +313,9 @@ def markdown(rep):
             lines += [f"UniXNU macOS 27.3 prelink roots present: {p['present']}/{p['total']}; missing: "
                       f"{', '.join(p['missing_in_this_kernelcache']) or 'none'}", ""]
         lines += [_table(a["counts"]), ""]
+        for rule, cx in a.get("contexts", {}).items():
+            for c in cx[:3]:
+                lines.append(f"- {rule}: `{c}`")
     return "\n".join(lines) + "\n"
 
 

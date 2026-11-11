@@ -197,16 +197,59 @@ def lzfse_decode(data, out_path):
             raise RuntimeError("no LZFSE decoder (compression_tool or lzfse)")
 
 
-def kernelcache_for(manifest, device_class):
-    """(kernelcache path, device class, build, version) of a board's customer erase identity."""
+def identity_for(manifest, device_class):
+    """The customer erase build identity of a board (DeviceClass)."""
     m = plistlib.loads(manifest)
     for ident in m["BuildIdentities"]:
         info = ident.get("Info", {})
         if info.get("DeviceClass", "").lower() == device_class.lower() and \
                 info.get("RestoreBehavior") == "Erase" and "Customer" in info.get("Variant", ""):
-            path = ident["Manifest"]["KernelCache"]["Info"]["Path"]
-            return path, info.get("DeviceClass"), m.get("ProductBuildVersion"), m.get("ProductVersion")
+            return m, ident
     raise KeyError(f"no customer erase identity for {device_class}")
+
+
+def kernelcache_for(manifest, device_class):
+    """(kernelcache path, device class, build, version) of a board's customer erase identity."""
+    m, ident = identity_for(manifest, device_class)
+    return (ident["Manifest"]["KernelCache"]["Info"]["Path"], ident["Info"].get("DeviceClass"),
+            m.get("ProductBuildVersion"), m.get("ProductVersion"))
+
+
+def adt_properties(blob, wanted_nodes=("", "product", "chosen")):
+    """String/u32 properties of the root node and selected children of an Apple device tree."""
+    out = {}
+
+    def parse(p, path):
+        nprops, nchildren = struct.unpack_from("<II", blob, p)
+        p += 8
+        props = {}
+        for _ in range(nprops):
+            name = blob[p:p + 32].split(b"\0", 1)[0].decode()
+            length = struct.unpack_from("<I", blob, p + 32)[0] & 0x7FFFFFFF
+            val = blob[p + 36:p + 36 + length]
+            props[name] = val
+            p += 36 + length + (-length % 4)
+        node = props.get("name", b"").split(b"\0", 1)[0].decode()
+        here = node if path is None else (f"{path}/{node}" if path else node)
+        key = "" if path is None else here
+        if key in wanted_nodes:
+            d = {}
+            for k, v in props.items():
+                if v.endswith(b"\0") and all(32 <= c < 127 for c in v[:-1]) and len(v) > 1:
+                    d[k] = v[:-1].decode()
+                elif len(v) == 4:
+                    d[k] = struct.unpack("<I", v)[0]
+            out[key or "/"] = d
+        for _ in range(nchildren):
+            p = parse(p, "" if path is None else here)
+        return p
+
+    parse(0, None)
+    return out
+
+
+COMPONENTS = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemTrustCache",
+              "Cryptex1,AppTrustCache", "OS", "Cryptex1,SystemOS", "Cryptex1,AppOS"]
 
 
 def main(argv=None):
@@ -237,6 +280,17 @@ def main(argv=None):
     manifest = read_member(src, cd["BuildManifest.plist"])
     (args.out_dir / "BuildManifest.plist").write_bytes(manifest)
     path, board, build, version = kernelcache_for(manifest, args.device_class)
+    _m, ident = identity_for(manifest, args.device_class)
+    components = {}
+    for comp in COMPONENTS:
+        member = ident["Manifest"].get(comp, {}).get("Info", {}).get("Path")
+        if member and member in cd:
+            components[comp] = {"member": member, "size": cd[member][3], "aea": member.endswith(".aea")}
+    adt = None
+    dt_member = components.get("DeviceTree", {}).get("member")
+    if dt_member:
+        _t, dt_payload, _c = im4p_payload(read_member(src, cd[dt_member]))
+        adt = adt_properties(dt_payload)
     im4p = read_member(src, cd[path])
     typ, payload, comp = im4p_payload(im4p)
     out = args.out_dir / Path(path).name
@@ -247,6 +301,8 @@ def main(argv=None):
     info = {"ipsw": args.url, "device_class": board, "version": version,
             "build": build, "member": path, "im4p_type": typ, "im4p_sha256": hashlib.sha256(im4p).hexdigest(),
             "compression": comp, "kernelcache": out.name,
+            "ap_chip_id": ident.get("ApChipID"), "ap_board_id": ident.get("ApBoardID"),
+            "components": components, "adt": adt,
             "kernelcache_sha256": hashlib.sha256(out.read_bytes()).hexdigest()}
     (args.out_dir / "kernelcache.json").write_text(json.dumps(info, indent=2) + "\n")
     print(json.dumps(info, indent=2))

@@ -78,3 +78,34 @@ jobs:
         with:
           name: tahoe-ipsw-kernelcache
           path: evidence/ipsw
+
+  publish:
+    # Artifacts are also committed to the audit-evidence branch, so the evidence
+    # can be read with plain git and copied into docs/evidence.
+    needs: [host, kernelcache]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: run
+      - name: Commit to audit-evidence
+        env:
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init -q ev && cd ev
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          if git fetch -q --depth 1 origin audit-evidence; then git checkout -q FETCH_HEAD; fi
+          git checkout -q -B audit-evidence
+          mkdir -p "runs/$RUN_ID"
+          cp -r ../run/* "runs/$RUN_ID/"
+          printf 'workflow run %s on commit %s\n' "$RUN_ID" "$SHA" > "runs/$RUN_ID/SOURCE"
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "Tahoe audit evidence of run $RUN_ID ($SHA)"
+          git push -q origin audit-evidence
