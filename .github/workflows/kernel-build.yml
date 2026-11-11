@@ -132,6 +132,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- build prelink
 
+      - name: Prelink layout (where the native __TEXT could go; numbers only)
+        if: always() && steps.prelink.outcome == 'failure'
+        run: |
+          kc=$(find "$UNIXNU/out/ipsw" -name 'kernelcache.decompressed' -type f | head -n 1)
+          native=$(find "$UNIXNU/out" -name 'mach.development.bcm2837.unstripped.noctf' -type f | head -n 1)
+          python3 scripts/prelink_layout.py --xnuprelink "$UNIXNU/kits/XnuPrelink" --kernelcache "$kc" --kernel "$native" \
+            --profile "$UNIXNU/profiles/os/macos-26.5-25F71/profile.toml" --json "$WORK/prelink-layout.json"
+
       - name: Report on the prelinked kernel collection
         id: prelink_report
         if: always() && steps.prelink.outcome == 'success'
@@ -146,7 +154,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/public"
-          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$RUNNER_TEMP/public/" 2>/dev/null || true
+          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os
           from pathlib import Path

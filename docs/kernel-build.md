@@ -27,7 +27,8 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Arsip: corecrypto ×2, ArmDTPlatform, ArmCpu cabang pipa, libpthread | **berhasil dibangun** terhadap header xnu-12377 | percobaan 1 |
 | Linking kernel native | **berhasil** di percobaan 2 (percobaan 1 gagal pada 5 simbol) | lihat riwayat |
 | Lapisan ARMv8.2 ter-link | **ya**: `_fge_xnu_init`, `_fge_xnu_handle`, `_fge_emulate` ada di tabel simbol | percobaan 2 |
-| Prelink dengan kernelcache 26.5 | belum (percobaan 3: `[kernel-prelink]`) | |
+| Prelink dengan kernelcache 26.5 | **gagal** di percobaan 3: `__TEXT` native tidak muat di `__PRELINK_TEXT` | lihat riwayat |
+| Build bit-for-bit reproducible | **tidak** (SHA-256 berbeda antar-run) | percobaan 2 vs 3 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Boot di tablet | belum | |
 
@@ -87,3 +88,15 @@ Perbaikan (commit berikutnya): `pipa_macos26_defconfig` memilih `CONFIG_XNU_CRYP
 Arti angka sensus: kernel arm64e ini masih berisi instruksi PAC non-hint yang akan trap di Cortex-A77/A55. FGE mengemulasikannya (null PAC), tetapi setiap trap mahal; langkah yang direncanakan adalah `tools/isa/pacstrip` pada kernel collection hasil prelink, lalu gerbang `audit --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`. Sensus ini statis (hitungan word di section kode), bukan bukti eksekusi.
 
 Yang **tidak** dibuktikan percobaan 2: kernel belum digabung dengan kext Tahoe 26.5 (prelink), belum di-`pacstrip`, belum dimasukkan ke payload, dan belum dijalankan di perangkat atau emulator.
+
+### Percobaan 3 — 2026-11-11, commit `aacff91`, run [42981285641](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42981285641): kernel ter-link lagi, **prelink gagal**
+
+- Compile + link berhasil lagi (rantai dan konfigurasi sama dengan percobaan 2). SHA-256 kernel native kali ini `643b015d2b60778dec1bf0670e4d022800797d7742b35554bfe5d38a73a3bf41`: berbeda dari percobaan 2, jadi build belum reproducible bit-for-bit (stempel waktu/UUID/versi di biner; belum diselidiki).
+- `build prelink`: kernelcache resmi `UniversalMac_26.5_25F71_Restore.ipsw` dibaca lewat HTTP range, pin SHA-256 profil cocok, pemasangan simbol `by name: 3384 functions, 292 data of 3764 kext-facing targets; 88 unpaired, 0 conflicts`. Lalu `kits/XnuPrelink/fileset_layout.py` berhenti: **`No room for 0x19c000 bytes in __PRELINK_TEXT`**.
+- Arti: XnuPrelink menaruh `__TEXT` kernel native (0x19c000 = 1,61 MiB, kernel DEVELOPMENT) di celah `__PRELINK_TEXT` kernel collection J274AP yang tidak ditempati kext yang dipertahankan (closure dari prelink roots profil). Di KC 26.5 tidak ada celah sebesar itu. Ini batas tata letak, bukan kesalahan kompilasi.
+- Diagnostik untuk percobaan berikutnya: `scripts/prelink_layout.py` (dijalankan workflow bila prelink gagal) mencetak celah-celah itu, kext yang membatasinya, dan selisihnya.
+
+Pilihan perbaikan (belum dipilih; butuh angka dari diagnostik):
+1. Kecilkan `__TEXT` native (konfigurasi kernel, atau memindahkan section read-only besar keluar dari `__TEXT`).
+2. Kurangi kext yang dipertahankan di sekitar slot kernel bila tidak dibutuhkan jalur generik pipa (mengubah daftar root prelink; harus dibenarkan per kext).
+3. Ubah XnuPrelink agar boleh menaruh `__TEXT` native di luar `__PRELINK_TEXT` (perubahan di UniXNU, perlu dicek terhadap asumsi XNU tentang urutan segmen).

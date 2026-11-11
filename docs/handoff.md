@@ -16,7 +16,7 @@ macOS Tahoe **26.5 (25F71)**, XNU **12377.121.6** (`ac9718fb1af6`), Xiaomi Pad 6
 | Board pipa UniXNU format 2 (`devices/pipa`) | selesai, di-resolve, dicek CI | `docs/board-migration.md`, artefak CI `pipa-board-status` |
 | Rantai patch | 120/120 apply ke xnu-12377.121.6 dalam urutan board | `scripts/check_patch_chain.py`, `pipa_unixnu.py check --xnu` |
 | Compile + link kernel native (arm64e) | **berhasil** (percobaan 2) | `docs/kernel-build.md`, run 42980033161 |
-| Prelink dengan kernelcache 26.5 | percobaan 3 (lihat `docs/kernel-build.md`) | run dari commit `aacff91` |
+| Prelink dengan kernelcache 26.5 | **gagal** (percobaan 3): `No room for 0x19c000 bytes in __PRELINK_TEXT`; percobaan 4 mengukur tata letak | `docs/kernel-build.md` |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Payload, boot image | belum | |
 | Boot di tablet | belum | |
@@ -49,7 +49,7 @@ Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (u
 
 ## Langkah berikutnya, berurutan
 
-1. Baca hasil percobaan 3 (prelink). Bila gagal, perbaiki dari log; bila berhasil, catat ukuran/hash/sensus kernel collection di `docs/kernel-build.md`.
+1. Baca keluaran `scripts/prelink_layout.py` dari percobaan 4 (log langkah "Prelink layout"): celah terbesar di `__PRELINK_TEXT` dan selisihnya terhadap `__TEXT` native 0x19c000. Pilih salah satu perbaikan di `docs/kernel-build.md` (percobaan 3) berdasarkan angka itu, lalu push dengan `[kernel-prelink]`.
 2. Pasang `tools/isa/pacstrip` ke kernel collection hasil prelink di workflow, lalu gerbang `python3 -m tools.isa.audit KC --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`.
 3. `build payload` (butuh `UNIXNU_UNIQUE_CHIP_ID` sebagai secret repo; board `unique_chip_id = "required"`) dan `bootimg`. Tidak di-commit, tidak diunggah.
 4. Uji di tablet hanya oleh pemilik, dengan `fastboot boot` (tidak menulis apa pun). Target pertama: bar entry probe, lalu panic `Failed to mount root device`.
