@@ -108,6 +108,8 @@ jobs:
           python3 scripts/pipa_hw.py inventory --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --linux "$RUNNER_TEMP/linux" \
             --markdown docs/evidence/hardware/pipa-mainline-inventory.md --check
           python3 scripts/pipa_hw.py drivers --linux "$RUNNER_TEMP/linux" --json pipa-hw-drivers.json
+      - name: pipa A650 GMU inputs generated from the DTB and Linux's a6xx sources, = package/A650Gmu.c (G3)
+        run: python3 scripts/gen_pipa_gmu.py --linux "$RUNNER_TEMP/linux" --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --check
       - name: Adreno 650 fork's device-tree parser on the pipa GPU and GMU nodes (G3)
         run: python3 scripts/test_adreno650.py --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --json adreno650-pipa.json
       - name: G6 memory window, DarwinBoot's MemoryWindow.h on the pipa memory map model

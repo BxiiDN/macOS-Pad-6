@@ -50,6 +50,13 @@ kind = "kit"
 git = "https://github.com/xVanTuring/ArmSmmu4K"
 commit = "6d4441db4b850cfd5a265a5bec59ac629a8f78cd"
 
-# Not selectable in format 2 yet, so not listed as sources: xVanTuring/Adreno650 01db67e0 (the A650 fork of Adreno740,
-# no catalog component) and xVanTuring/AdrenoMetal 2ff4be9e (its catalog entry depends on Adreno740 and Sm8550Platform).
+# The A650 fork of Adreno740 (gap G3). Its catalog entry comes from patches/unixnu/0002-catalog-adreno650.patch, and
+# scripts/pipa_unixnu.py applies patches/adreno650/series to this checkout (0001: the null-object guard of
+# NativeAdrenoVm::map, backported from upstream Adreno740; 0002: its tests' SMMU peers). Selected by the iPadOS override.
+# Not listed: xVanTuring/AdrenoMetal 2ff4be9e (its catalog entry depends on Adreno740 and Sm8550Platform).
 # docs/board-migration.md, gap G3.
+[[source]]
+name = "Adreno650"
+kind = "driver"
+git = "https://github.com/xVanTuring/Adreno650"
+commit = "01db67e0620fe0e70ab8cbce533cbdb1369f5922"

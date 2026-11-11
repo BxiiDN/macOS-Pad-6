@@ -42,6 +42,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BOARD = ROOT / "devices/pipa"
 PROFILE = ROOT / "profiles/macos-26.5/unixnu/macos-26.5-25F71"
 UNIXNU_PATCHES = ROOT / "patches/unixnu"
+# Patch series this repository applies to a fetched feed source, by source name (each patch says what and why).
+FEED_PATCHES = {"Adreno650": ROOT / "patches/adreno650"}
 DEFAULT_OS = "macos-26.5-25F71"
 OVERRIDE_OS = "ipados-17.7.11-21H461"
 DEFAULT_WORK = ROOT / "build/pipa-unixnu"
@@ -124,17 +126,19 @@ def prepare(unixnu, work, in_place=False):
     modules = {}
     for src in feed_sources():
         modules[(src["kind"], src["name"])] = fetch(src, work / "feeds")
+        if src["name"] in FEED_PATCHES:
+            apply_unixnu_patches(modules[(src["kind"], src["name"])], FEED_PATCHES[src["name"]])
     (work / "modules.json").write_text(json.dumps(
         {"unixnu": str(ux), "source": str(unixnu),
          "modules": {f"{k}:{n}": str(p) for (k, n), p in modules.items()}}, indent=2) + "\n")
     return ux, modules
 
 
-def unixnu_patches():
-    series = UNIXNU_PATCHES / "series"
+def unixnu_patches(directory=UNIXNU_PATCHES):
+    series = directory / "series"
     if not series.is_file():
         return []
-    return [UNIXNU_PATCHES / line.strip() for line in series.read_text().splitlines()
+    return [directory / line.strip() for line in series.read_text().splitlines()
             if line.strip() and not line.startswith("#")]
 
 
@@ -145,11 +149,11 @@ def git_apply(ux, *args):
     return subprocess.run(["git", "apply", *map(str, args)], cwd=ux, env=env, capture_output=True, text=True)
 
 
-def apply_unixnu_patches(ux):
+def apply_unixnu_patches(ux, directory=UNIXNU_PATCHES):
     """patches/unixnu/series on the UniXNU copy (or the --in-place checkout): each patch is applied unless it is
     already there (its reverse applies), so preparing twice is harmless. Returns {patch: "applied" | "present"}."""
     done = {}
-    for patch in unixnu_patches():
+    for patch in unixnu_patches(directory):
         check = git_apply(ux, "--check", patch)
         if check.returncode == 0:
             if git_apply(ux, patch).returncode:
@@ -408,6 +412,10 @@ def check(args):
                     if k in ("soc", "driver", "kit")},
         # patches/unixnu, as prepare() left them in the copy: reverse-applicable means present.
         "unixnu_patches": {pt.name: git_apply(ux, "--check", "--reverse", pt).returncode == 0 for pt in unixnu_patches()},
+        # patches/<feed>: present in the fetched checkout of that feed source.
+        "feed_patches": {f"{name}/{pt.name}": git_apply(modules[next(k for k in modules if k[1] == name)], "--check",
+                                                        "--reverse", pt).returncode == 0
+                         for name, directory in FEED_PATCHES.items() for pt in unixnu_patches(directory)},
         "override": {
             "profile": Path(old["profiles"].get("os", "")).name,
             "ipsw": [old["board"]["ipsw"]["version"], old["board"]["ipsw"]["build"]],
@@ -435,6 +443,11 @@ def check(args):
         errors.append(f"override resolved as {res['override']}")
     if not all(res["unixnu_patches"].values()):
         errors.append(f"UniXNU patches not in the copy: {res['unixnu_patches']}")
+    if not all(res["feed_patches"].values()):
+        errors.append(f"feed patches not in the checkouts: {res['feed_patches']}")
+    # G3: the iPadOS override selects the catalogued Adreno650, from the feeds.toml pin.
+    if "Adreno650" not in res["override"]["components"]:
+        errors.append("the iPadOS override does not select Adreno650")
     if res["override"]["owned_memory"]["owned_memory_excluded_ranges"]:
         errors.append("the iPadOS override carries owned_memory_excluded_ranges, which its kernel does not read")
     # Every pinned source the default profile selects must come from its pin, not UniXNU's checkout.
@@ -451,6 +464,11 @@ def check(args):
         for key, commit in feeds.items():
             if key in rows_os and rows_os[key]["revision"] != commit:
                 errors.append(f"{os_name}: {key} at {rows_os[key]['revision']}, pinned {commit}")
+        if os_name == OVERRIDE_OS:
+            a650 = rows_os.get(("driver", "Adreno650"))
+            res["override"]["adreno650"] = a650
+            if not a650 or a650["revision"] != feeds[("driver", "Adreno650")]:
+                errors.append(f"{os_name}: Adreno650 not resolved from its feeds.toml pin: {a650}")
     if args.xnu:
         res["xnu_apply"] = apply_order(args.xnu, new["patch_order"])
         if res["xnu_apply"]["failed"]:

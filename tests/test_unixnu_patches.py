@@ -59,6 +59,7 @@ class Applied(unittest.TestCase):
         subprocess.run(["git", "init", "-q", str(outer)], check=True)
         cls.ux = outer / "UniXNU"
         shutil.copytree(UNIXNU / "scripts", cls.ux / "scripts")
+        shutil.copy(UNIXNU / "components.toml", cls.ux / "components.toml")
         cls.first = pu.apply_unixnu_patches(cls.ux)
         cls.second = pu.apply_unixnu_patches(cls.ux)
         sys.path.insert(0, str(cls.ux / "scripts"))
@@ -95,6 +96,27 @@ class Applied(unittest.TestCase):
             text = (self.ux / "scripts" / name).read_text()
             self.assertIn("ufs_soc.defines(os.environ.get('UNIXNU_SOC'))", text, name)
             compile(text, name, "exec")
+
+    def test_adreno650_catalog_entry(self):
+        import tomllib
+        entries = {e["id"]: e for e in tomllib.loads((self.ux / "components.toml").read_text())["component"]}
+        a650 = entries["Adreno650"]
+        self.assertEqual(a650["repository"], "https://github.com/xVanTuring/Adreno650.git")
+        self.assertEqual(a650["revision"], "01db67e0620fe0e70ab8cbce533cbdb1369f5922")
+        self.assertEqual(a650["build"], ["build-adreno650.py"])
+        self.assertTrue((ROOT / "devices/pipa/scripts/build-adreno650.py").is_file())   # the device recipe it names
+        self.assertNotIn("Sm8550Platform", a650["dependencies"])
+        for dep in a650["dependencies"]:
+            self.assertIn(dep, entries)
+        # The same pin as feeds.toml's [[source]] Adreno650.
+        feeds = {x["name"]: x for x in tomllib.loads((ROOT / "devices/pipa/feeds.toml").read_text())["source"]}
+        self.assertEqual(feeds["Adreno650"]["commit"], a650["revision"])
+        # The catalog's selection logic resolves it with its dependencies first.
+        components = importlib.import_module("unixnu.components")
+        ctx = types.SimpleNamespace(root=self.ux, board={"components": {"include": ["Adreno650"]}})
+        order = [e["id"] for e in components.selected(ctx)]
+        self.assertEqual(order[-1], "Adreno650")
+        self.assertEqual(set(order[:-1]), {"AdrenoPM4", "AdrenoFirmware", "ArmSmmu4K"})
 
     def test_kernel_step_exports_soc(self):
         kernel = importlib.import_module("unixnu.kernel")

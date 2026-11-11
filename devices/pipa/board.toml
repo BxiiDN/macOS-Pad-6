@@ -30,8 +30,9 @@ last_lba = 0x1d387fa
 lba_bytes = 4096
 
 # The macOS 26.5 kernel: the generic CPU, interrupt, timer and platform expert path of the arm64e profile on this board's
-# cores. Storage, display, input and GPU are not selected yet: their arm64e recipes are SM8550's (ShengUfs builds the sheng
-# source storage under arm64e) or are not in the component catalog (Adreno650). docs/kernel-build.md.
+# cores. Storage, display, input and GPU are not selected yet: no arm64e build of them exists for SM8250 (ShengUfs builds
+# the source storage under arm64e, patches/unixnu/0001 gives it the SM8250 switch; Adreno650 is catalogued for iPadOS 17
+# only). docs/kernel-build.md.
 [kernel]
 defconfig = "pipa_macos26_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/macos.config"]
@@ -155,14 +156,14 @@ unixnu = "../../third_party/UniXNU"
 # iPadOS 17.7.11: UniXNU-pipa's port as it ran on the tablet (2026-10-24), moved to format 2. The values are format 1's;
 # components carry their catalog names with pipa's forks pinned in feeds.toml. This override resolves; it is not built by
 # this repository (its archive plan needs inputs kept outside Git: UniXNU-tb128fu's storage ABI audit and owner key, and
-# the Adreno 650 driver, which no catalog component provides yet). docs/board-migration.md lists each gap.
+# the GPU firmware read from the tablet). docs/board-migration.md lists each gap.
 # ---------------------------------------------------------------------------------------------------------------------
 [os_overrides."ipados-17.7.11-21H461"]
 # vmm-present is the macOS profile's; the excluded-range table is read only by the macOS kernel's chain (payload.adt).
 remove = ["adt.defaults.u32.vmm-present", "payload.adt.owned_memory_excluded_ranges"]
 
 [os_overrides."ipados-17.7.11-21H461".components]
-include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "ShengUfs", "VirtioMmioBlock", "RamBlock", "GopFramebuffer", "ShengHidInput", "ShengNovatekTouch", "QcomGeniSpi", "AppleKeyStoreState", "ArmSmmu4K", "AdrenoFirmware", "AdrenoPM4", "XnuPrelink", "DarwinBoot", "VerifiedRoot"]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "ShengUfs", "VirtioMmioBlock", "RamBlock", "GopFramebuffer", "ShengHidInput", "ShengNovatekTouch", "QcomGeniSpi", "AppleKeyStoreState", "ArmSmmu4K", "AdrenoFirmware", "AdrenoPM4", "Adreno650", "XnuPrelink", "DarwinBoot", "VerifiedRoot"]
 
 [os_overrides."ipados-17.7.11-21H461".kernel]
 defconfig = "pipa_defconfig"
@@ -190,6 +191,8 @@ archives = [
   "component:GopFramebuffer",
   "component:ShengHidInput",
   "component:AppleKeyStoreState",
+  # Adreno650 (patches/unixnu/0002): its recipe is the device script build-adreno650.py (format 1 ran it directly).
+  "component:Adreno650",
   "build-gop-legacy-display.py",
 ]
 

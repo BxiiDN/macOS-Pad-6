@@ -55,8 +55,12 @@ LINUX_DTS = "arch/arm64/boot/dts/qcom/sm8250-xiaomi-pipa.dts"
 LINUX_DRIVERS = {"geni-se.h": "include/linux/soc/qcom/geni-se.h", "qcom-geni-se.c": "drivers/soc/qcom/qcom-geni-se.c",
                  "i2c-qcom-geni.c": "drivers/i2c/busses/i2c-qcom-geni.c", "i2c.h": "include/linux/i2c.h",
                  "ktz8866.c": "drivers/video/backlight/ktz8866.c"}
+# The Adreno a6xx GMU sources scripts/gen_pipa_gmu.py generates pipa's GMU inputs from (same commit).
+LINUX_GPU = ["drivers/gpu/drm/msm/adreno/a6xx_gmu.c", "drivers/gpu/drm/msm/adreno/a6xx_gmu.h",
+             "drivers/gpu/drm/msm/adreno/a6xx_catalog.c", "drivers/gpu/drm/msm/registers/adreno/a6xx.xml",
+             "drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml"]
 SPARSE = ["/arch/arm64/boot/dts/qcom/sm8250*", "/arch/arm64/boot/dts/qcom/pm8150*", "/include/dt-bindings/",
-          "/include/uapi/linux/input-event-codes.h"] + ["/" + p for p in LINUX_DRIVERS.values()]
+          "/include/uapi/linux/input-event-codes.h"] + ["/" + p for p in LINUX_DRIVERS.values()] + ["/" + p for p in LINUX_GPU]
 PKG = ROOT / "devices/pipa/package"
 VENDOR_GIT = "https://github.com/MiCode/kernel_devicetree"
 VENDOR_BRANCH = "pipa-t-oss"

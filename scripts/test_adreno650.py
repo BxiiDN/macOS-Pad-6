@@ -8,11 +8,15 @@ Adreno650 is the pipa branch of UniXNU's Adreno740 (no catalog component yet, so
 devices/pipa/feeds.toml). Its tests/ hold host tests over software register peers with authored IOKit doubles
 (tests/XnuMemoryFixture.h). This script fetches the fork and its ArmSmmu4K kit at the pins below, compiles the
 driver sources that build against those doubles (UniXNU's AdrenoPM4 kit from the submodule), and runs every test:
-  - a test needing a header the build generates per board (ShengGmu.h, build/sheng-gmu) is skipped, named;
+  - ShengGmu.h, the GMU API the fork's sheng (A740) GMU config and platform sources include, comes from the
+    Sm8550Platform kit at its UniXNU catalog pin (header only; the A650 build does not link that platform);
+  - a test needing a header generated per board for sheng (ShengGmuSource.h, build/sheng-gmu) is skipped, named;
   - a test needing a source written for AArch64 only (inline dsb/isb) is skipped on another host, named;
-  - a test whose register peer refuses a 64-bit write that the pinned ArmSmmu4K makes is reported "known-fail"
-    (a fork/kit finding, listed in the output and the JSON, not hidden);
+  - a failure listed in KNOWN_FAILURES (variant, test, the source line it stops at, the established cause) is
+    reported "known-fail"; a listed failure that no longer fails, or fails elsewhere, is FAILED;
   - every other test must build and pass.
+The tests run twice: on the fork as pinned ("pin") and with patches/adreno650/series applied ("patched": a driver
+fix and a test fixture fix, each patch says what and why). Both results are printed and written to the JSON.
 With --dtb (the mainline pipa DTB of scripts/pipa_hw.py compile), tests/gpu/A650PipaBoard.cpp also feeds the GPU and
 GMU nodes' reg and iommus properties through NativeAdrenoBoard and checks them against package/GpuPowerBoard.h.
 
@@ -34,12 +38,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 ADRENO650_GIT = "https://github.com/xVanTuring/Adreno650"
-ADRENO650_COMMIT = "01db67e0620fe0e70ab8cbce533cbdb1369f5922"     # = the pin named in devices/pipa/feeds.toml
+ADRENO650_COMMIT = "01db67e0620fe0e70ab8cbce533cbdb1369f5922"     # = devices/pipa/feeds.toml [[source]] Adreno650
 KITS = ROOT / "third_party/UniXNU/kits"
 PKG = ROOT / "devices/pipa/package"
 SHIM_HEADERS = ["IOKit/IOTypes.h", "IOKit/IOReturn.h", "IOKit/IOBufferMemoryDescriptor.h", "IOKit/IOLib.h", "kern/task.h"]
-GENERATED = ("ShengGmu.h",)                # build/sheng-gmu, generated from the board's GMU tables
+GENERATED = ("ShengGmuSource.h", "ShengGmuVotesSource.h", "ShengGmuCommandDbSource.h")   # build/sheng-gmu, sheng's
 AARCH64 = platform.machine() in ("aarch64", "arm64")
+PATCHES = ROOT / "patches/adreno650"
+# (variant, test) -> (text of the source line the test stops at, established cause). Traced in a host build under gdb.
+KNOWN_FAILURES = {
+    ("pin", "test_gmumap"): ("CHECK(0)", "its SMMU peer forbids 64-bit writes; the merged ArmSmmu4K drops an unmap's pages with "
+                             "TLBIVAL, a 64-bit write at context bank + 0x620 (NativeAdrenoVm::unmap -> "
+                             "ArmSmmu4KSyncContextTlbPages). Stale test fixture: patch 0002"),
+    ("pin", "test_vm"): ("CHECK(0)", "the same stale SMMU peer (TLBIVAL at context bank + 0x620): patch 0002"),
+    ("patched", "test_vm"): ("s.vm.map(&second,0,0x802000", "the test expects a second owned BO aliasing the first one's "
+                             "physical page (made by the fixture) with other attributes to be refused; since fork commit "
+                             "1c4065c owned memory is mapped without the alias scan and the test was not updated. A "
+                             "test/driver disagreement left open, not patched"),
+}
 
 
 def run(cmd, **kw):
@@ -69,18 +85,27 @@ def feed_commit(name):
 
 
 def check_feeds_comment():
-    """The fork is not a [[source]] of feeds.toml (format 2 cannot select it); its pin is named in a comment there."""
-    text = (ROOT / "devices/pipa/feeds.toml").read_text()
-    if f"xVanTuring/Adreno650 {ADRENO650_COMMIT[:8]}" not in text:
-        sys.exit(f"devices/pipa/feeds.toml does not name xVanTuring/Adreno650 {ADRENO650_COMMIT[:8]}")
+    """The fork's pin here is the [[source]] Adreno650 of devices/pipa/feeds.toml (format 2 builds that checkout)."""
+    if feed_commit("Adreno650") != (ADRENO650_GIT, ADRENO650_COMMIT):
+        sys.exit(f"devices/pipa/feeds.toml Adreno650 is {feed_commit('Adreno650')}, this script pins {ADRENO650_COMMIT}")
 
 
-def compile_all(fork, smmu, work, cxx, cc):
+def catalog_pin(component):
+    """repository, revision and path of a UniXNU catalog component (third_party/UniXNU/components.toml)."""
+    for entry in tomllib.loads((ROOT / "third_party/UniXNU/components.toml").read_text())["component"]:
+        if entry["id"] == component:
+            return entry["repository"].removesuffix(".git"), entry["revision"], entry["path"]
+    raise KeyError(component)
+
+
+def compile_all(fork, smmu, work, cxx, cc, extra_includes=()):
     inc = work / "host-include"
     for name in SHIM_HEADERS:
         (inc / name).parent.mkdir(parents=True, exist_ok=True)
         (inc / name).write_text('#include "XnuMemoryFixture.h"\n')
     flags = ["-I", inc, "-I", fork, "-I", fork / "tests", "-I", smmu, "-I", KITS / "AdrenoPM4", "-I", KITS / "AdrenoFirmware"]
+    for d in extra_includes:
+        flags += ["-I", d]
     objdir = work / "obj"
     objdir.mkdir(parents=True, exist_ok=True)
     built, missing = [], {}
@@ -119,7 +144,33 @@ def owner(symbol, fork, missing):
     return None
 
 
-def run_tests(fork, flags, lib, missing, work, cxx):
+def classify(variant, name, text, why):
+    """A failing run: known-fail when it stops where KNOWN_FAILURES says, otherwise FAILED."""
+    known = KNOWN_FAILURES.get((variant, name))
+    m = re.match(r"line (\d+): ", why)
+    if known and m and 0 < int(m.group(1)) <= len(text.splitlines()) and known[0] in text.splitlines()[int(m.group(1)) - 1]:
+        return "known-fail", f"{why} -- {known[1]}"
+    return "FAILED", why
+
+
+def apply_series(src, dest):
+    """A copy of the fork with patches/adreno650/series applied."""
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(src, dest, ignore=shutil.ignore_patterns(".git"))
+    applied = []
+    for line in (PATCHES / "series").read_text().splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(dest.parent))
+        p = subprocess.run(["git", "apply", str(PATCHES / line.strip())], cwd=dest, env=env, capture_output=True, text=True)
+        if p.returncode:
+            sys.exit(f"patches/adreno650/{line.strip()} does not apply:\n{p.stderr}")
+        applied.append(line.strip())
+    return dest, applied
+
+
+def run_tests(fork, flags, lib, missing, work, cxx, variant="pin"):
     results = {}
     for test in sorted((fork / "tests").glob("test_*.cpp")):
         name = test.stem
@@ -132,7 +183,7 @@ def run_tests(fork, flags, lib, missing, work, cxx):
             undefined = sorted(set(re.findall(r"undefined reference to `([^'(]+)", p.stderr)))
             owners = {sym: owner(sym, fork, missing) for sym in undefined}
             if gen:
-                results[name] = {"result": "skipped", "why": f"needs the generated {', '.join(gen)} (build/sheng-gmu)"}
+                results[name] = {"result": "skipped", "why": f"needs sheng's generated {', '.join(gen)} (build/sheng-gmu)"}
             elif undefined and all(owners.values()):
                 why = sorted({f"{src} ({missing[src]})" for src in owners.values()})
                 results[name] = {"result": "skipped", "why": "links " + ", ".join(why)}
@@ -142,14 +193,12 @@ def run_tests(fork, flags, lib, missing, work, cxx):
         r = run([binary], timeout=600)
         out = (r.stdout + r.stderr).strip().splitlines()
         why = out[-1][:300] if out else ""
-        result = "passed" if r.returncode == 0 else "FAILED"
-        m = re.match(r"line (\d+): ", why)
-        if result == "FAILED" and m and "write64" in text.splitlines()[int(m.group(1)) - 1] and "CHECK(0)" in \
-                text.splitlines()[int(m.group(1)) - 1]:
-            # The test's SMMU register peer forbids 64-bit writes and the code under test, with ArmSmmu4K at the
-            # feeds.toml pin, makes one (which call is not established yet). A finding about this fork/kit pair, kept
-            # visible: listed, in the JSON, and in docs/board-migration.md (G3).
-            result, why = "known-fail", f"{why} (the test forbids write64; with the pinned ArmSmmu4K a 64-bit write happens)"
+        if r.returncode == 0:
+            result = "passed"
+            if (variant, name) in KNOWN_FAILURES:       # a listed failure that passes: the table is out of date
+                result, why = "FAILED", f"listed in KNOWN_FAILURES but passed: {why}"
+        else:
+            result, why = classify(variant, name, text, why)
         results[name] = {"result": result, "why": why}
     return results
 
@@ -205,20 +254,30 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     fork = fetch(ADRENO650_GIT, ADRENO650_COMMIT, work / "Adreno650")
     smmu = fetch(*feed_commit("ArmSmmu4K"), work / "ArmSmmu4K")
-    flags, lib, missing = compile_all(fork, smmu, work, cxx, cc)
-    results = run_tests(fork, flags, lib, missing, work, cxx)
-    if args.dtb:
-        results["A650PipaBoard (pipa DTB)"] = pipa_board(fork, flags, lib, work, cxx, args.dtb)
-    for name, r in results.items():
-        print(f"{r['result']:8} {name:28} {r['why']}")
-    for src, why in sorted(missing.items()):
-        print(f"not built {src}: {why}")
-    summary = {k: sum(1 for r in results.values() if r["result"] == k) for k in ("passed", "skipped", "known-fail", "FAILED")}
-    print(json.dumps({"host": platform.machine(), **summary}))
+    sm8550_git, sm8550_rev, _ = catalog_pin("Sm8550Platform")
+    sm8550 = fetch(sm8550_git, sm8550_rev, work / "UniXNU-sm8550-common") / "kits/Sm8550Platform"
+    patched, applied = apply_series(fork, work / "Adreno650-patched")
+    report, failed = {}, False
+    for variant, tree in (("pin", fork), ("patched", patched)):
+        vwork = work / variant
+        vwork.mkdir(parents=True, exist_ok=True)
+        flags, lib, missing = compile_all(tree, smmu, vwork, cxx, cc, [sm8550])
+        results = run_tests(tree, flags, lib, missing, vwork, cxx, variant)
+        if args.dtb and variant == "patched":
+            results["A650PipaBoard (pipa DTB)"] = pipa_board(tree, flags, lib, vwork, cxx, args.dtb)
+        print(f"== {variant}" + (f" ({', '.join(applied)})" if variant == "patched" else f" ({ADRENO650_COMMIT[:12]})"))
+        for name, r in results.items():
+            print(f"{r['result']:10} {name:28} {r['why']}")
+        for src, why in sorted(missing.items()):
+            print(f"not built  {src}: {why}")
+        summary = {k: sum(1 for r in results.values() if r["result"] == k) for k in ("passed", "skipped", "known-fail", "FAILED")}
+        print(json.dumps({"variant": variant, "host": platform.machine(), **summary}))
+        report[variant] = {"summary": summary, "tests": results, "not_built": missing}
+        failed |= bool(summary["FAILED"]) or not summary["passed"]
     if args.json:
-        args.json.write_text(json.dumps({"adreno650": ADRENO650_COMMIT, "host": platform.machine(), "summary": summary,
-                                         "tests": results, "not_built": missing}, indent=2) + "\n")
-    if summary["FAILED"] or not summary["passed"]:
+        args.json.write_text(json.dumps({"adreno650": ADRENO650_COMMIT, "host": platform.machine(), "patches": applied,
+                                         **report}, indent=2) + "\n")
+    if failed:
         sys.exit("Adreno650 host tests failed")
 
 

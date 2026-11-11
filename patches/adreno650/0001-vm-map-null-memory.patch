@@ -1,0 +1,23 @@
+Adreno650 01db67e0: NativeAdrenoVm::map(nullptr, ...) returns kIOReturnBadArgument instead of dereferencing null
+
+Since 1c4065c (perf(vm): map owned and exclusive imported memory without alias scans) map() calls
+exclusivePages(memory, cls) before preflight(), and exclusivePages dereferences memory first: a null object
+crashes the kernel instead of being refused. The fork's test_vm calls map(nullptr, ...) and expects
+kIOReturnBadArgument (found by running it in a host build once its SMMU peer accepts TLBIVAL, see 0002).
+Upstream Adreno740 (122a8f1) has the same guard; this backports exactly that line.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+---
+diff --git a/NativeAdrenoVm.cpp b/NativeAdrenoVm.cpp
+index 2041489..1be6bcf 100644
+--- a/NativeAdrenoVm.cpp
++++ b/NativeAdrenoVm.cpp
+@@ -243,7 +243,7 @@ IOReturn NativeAdrenoVm::preflight(const NativeAdrenoMemory *memory,unsigned upp
+  * 5000-6000 spans each, every one checked against every other range. */
+ bool NativeAdrenoVm::exclusivePages(const NativeAdrenoMemory *memory,unsigned cls) const
+ {
+-    if(!memory->imported())return true;
++    if(!memory || !memory->imported())return true;   /* preflight refuses a null one */
+     size_t imports=0;for(size_t k=0;k<16;++k)imports+=import_spans_[k];
+     if(imports!=import_spans_[cls&15])return false;
+     const uint64_t pool=NativeAdrenoMemory::poolPhysical();const size_t poolBytes=NativeAdrenoMemory::poolBytes();
