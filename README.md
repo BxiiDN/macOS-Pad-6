@@ -11,7 +11,7 @@ Riset dan implementasi untuk menjalankan **macOS asli (XNU + userland Apple)** d
 > - lapisan yang menangani hambatan utama: CPU Pad 6 (ARMv8.2) tidak punya Pointer Authentication, sedangkan seluruh macOS untuk ARM adalah arm64e;
 > - kernel XNU native macOS 26.5 untuk pipa (arm64e, dengan null-PAC dan FGE) **berhasil di-compile dan di-link** di runner macOS (2026-11-11); belum di-prelink dan belum di-boot ([docs/kernel-build.md](docs/kernel-build.md)).
 >
-> Laporan lengkap ada di [docs/tahoe-26-report.md](docs/tahoe-26-report.md); status per fitur di [docs/compatibility.md](docs/compatibility.md).
+> Untuk melanjutkan pekerjaan: [docs/handoff.md](docs/handoff.md). Laporan lengkap ada di [docs/tahoe-26-report.md](docs/tahoe-26-report.md); status per fitur di [docs/compatibility.md](docs/compatibility.md).
 
 Ini bukan launcher, tema, simulator, atau skin.
 
