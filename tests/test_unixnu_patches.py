@@ -48,6 +48,22 @@ class Series(unittest.TestCase):
             self.assertIn("SPDX-License-Identifier", p.read_text())
 
 
+    def test_feed_series(self):
+        # patches/<feed> for each feeds.toml source pipa_unixnu.py patches after fetching it.
+        self.assertEqual(set(pu.FEED_PATCHES), {"Adreno650", "ShengUfs"})
+        for name, directory in pu.FEED_PATCHES.items():
+            patches = pu.unixnu_patches(directory)
+            self.assertTrue(patches, name)
+            for p in patches:
+                self.assertIn("SPDX-License-Identifier", p.read_text(), p)
+        ufs = pu.unixnu_patches(pu.FEED_PATCHES["ShengUfs"])[0].read_text()
+        # The xnu-12377 interfaces, as the catalog's ShengUfs pin: no vm_map_protect left, the protection kept.
+        self.assertIn("+#include <vm/vm_kern_xnu.h>", ufs)
+        self.assertIn("-  if (vm_map_protect (kernel_map", ufs)
+        self.assertIn("+  if (mach_vm_protect (kernel_map, verifiedStorage, verifiedStorageBytes,", ufs)
+        self.assertIn("TRUE, VM_PROT_READ", ufs)
+
+
 @unittest.skipUnless(HAVE_UNIXNU, "needs the UniXNU submodule")
 class Applied(unittest.TestCase):
     @classmethod
