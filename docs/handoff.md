@@ -2,7 +2,7 @@
 
 Untuk sesi berikutnya. Baca ini dulu; jangan ulangi riset atau langkah yang sudah tercatat di sini.
 
-Diperbarui: 2026-11-11. Cabang kerja: `board-migration-wip` (PR #1 ke `main`). `main` tidak diubah sejak `5b89722`.
+Diperbarui: 2026-11-11 (setelah percobaan build kernel ke-5). Cabang kerja: `board-migration-wip` (PR #1 ke `main`). `main` tidak diubah sejak `5b89722`.
 
 ## Target (tetap)
 
@@ -49,7 +49,7 @@ Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (u
 
 ## Langkah berikutnya, berurutan
 
-1. Prelink: `__TEXT` native harus turun ≥ 38.944 byte agar muat di celah setelah `AppleARMWatchdogTimer` (angka di `docs/kernel-build.md`, percobaan 4). Baca ukuran section `__TEXT` dari laporan kernel percobaan 5 (log langkah "Report on the kernel"), pangkas yang terbesar yang bukan milik Apple (string diagnostik patch UniXNU/pipa, tabel FGE) atau pertimbangkan perubahan XnuPrelink, lalu push dengan `[kernel-prelink]`.
+1. Prelink: `__TEXT` native harus turun ≥ 38.944 byte agar muat di celah setelah `AppleARMWatchdogTimer` (angka di `docs/kernel-build.md`, percobaan 4). Ukuran section sudah diukur (percobaan 5: `__cstring` 1.116.153 byte, `__os_log` 281.834, `__const` 279.432); `vmsize` harus turun dari `0x19c000` ke `0x190000`. Pangkas yang terbesar yang bukan milik Apple (string diagnostik patch UniXNU/pipa, tabel FGE) atau pertimbangkan perubahan XnuPrelink, lalu push dengan `[kernel-prelink]`.
 2. Pasang `tools/isa/pacstrip` ke kernel collection hasil prelink di workflow, lalu gerbang `python3 -m tools.isa.audit KC --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`.
 3. `build payload` (butuh `UNIXNU_UNIQUE_CHIP_ID` sebagai secret repo; board `unique_chip_id = "required"`) dan `bootimg`. Tidak di-commit, tidak diunggah.
 4. Uji di tablet hanya oleh pemilik, dengan `fastboot boot` (tidak menulis apa pun). Target pertama: bar entry probe, lalu panic `Failed to mount root device`.

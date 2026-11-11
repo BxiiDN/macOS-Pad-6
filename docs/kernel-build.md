@@ -119,3 +119,19 @@ Kesimpulan dari angka ini:
 - Pilihan 2 tidak menolong: celah 1 dan 2 dipisahkan `AppleARMPlatform`, yang dibutuhkan jalur platform macOS UniXNU; tanpa `AppleARMWatchdogTimer` pun celah 2 tetap mulai di `0xfffffe000717c000` setelah perataan.
 - Pilihan 1 cukup bila `__TEXT` native turun sedikitnya **38.944 byte** (muat di celah 2), atau 255.600 byte untuk slot kernel asli. Laporan kernel (`kernel_report.py`) sekarang mencantumkan ukuran setiap section `__TEXT` untuk memilih apa yang dipangkas.
 - Pilihan 3 tetap mungkin, tetapi mengubah UniXNU.
+
+### Percobaan 5 — 2026-11-11, commit `e1a15dc`, run [42984181369](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42984181369): isi `__TEXT` native
+
+Compile + link berhasil lagi (SHA-256 `e415f1c0105be18e7f5667dbde38c565afa36363acfbfbf38d18cfbe139097fd`, ukuran sama 25.135.384 byte). Section `__TEXT` kernel native:
+
+| Section | Byte |
+| --- | --- |
+| `__cstring` | 1.116.153 |
+| `__os_log` | 281.834 |
+| `__const` | 279.432 |
+| `__eh_frame` | 1.712 |
+| `__copyio_vectors` | 360 |
+| `__fips_hmacs` | 32 |
+| jumlah | 1.679.523 (`0x19a0a3`), ditambah header Mach-O di awal segmen |
+
+Agar muat di celah 2, `vmsize` `__TEXT` harus turun dari `0x19c000` ke `0x190000` (tiga halaman 16 KiB), jadi isi section harus berkurang sedikitnya sekitar 41 KB ditambah pertumbuhan header. `__cstring` (1,06 MiB) adalah sasaran utama: string diagnostik yang ditambahkan rantai patch (UniXNU dan pipa) dan string build DEVELOPMENT. Belum ada yang dipangkas.
