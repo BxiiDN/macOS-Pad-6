@@ -1,0 +1,181 @@
+# Kernel step of devices/pipa (macOS Tahoe 26.5, xnu-12377.121.6 + 119 patches) on a macOS runner, the
+# platform UniXNU builds on (after UniXNU's own .github/workflows/macos.yml). It compiles and links the native
+# XNU kernel; the prelink with the official 26.5 kernelcache (read by HTTP range requests) is optional.
+# Only text logs and a JSON report (sizes, hashes, Mach-O header, ISA census) are uploaded: the kernel and every
+# Apple input stay on the runner and are removed at the end. Nothing here touches a device.
+#
+# Runs on workflow_dispatch, and on a push to board-migration-wip whose head commit message contains
+# "[kernel-build]" (a dispatch needs the workflow on the default branch, which main does not have yet).
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+name: Kernel build (pipa, macOS 26.5)
+
+on:
+  push:
+    branches: [board-migration-wip]
+  workflow_dispatch:
+    inputs:
+      prelink:
+        description: "Also prelink with the official macOS 26.5 kernelcache (J274AP 25F71, HTTP range reads)"
+        type: boolean
+        default: false
+      xcode:
+        description: "Xcode of the macos-26 image (/Applications/Xcode_<version>.app)"
+        default: "26.6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+  WORK: ${{ github.workspace }}/../pipa-work
+  UNIXNU: ${{ github.workspace }}/../UniXNU-build
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  kernel:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]')
+    runs-on: macos-26
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Select Xcode
+        env:
+          XCODE: ${{ inputs.xcode || '26.6' }}
+        run: |
+          dir="/Applications/Xcode_${XCODE}.app/Contents/Developer"
+          if [ -d "$dir" ]; then
+            echo "DEVELOPER_DIR=$dir" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Xcode $XCODE not on this image ($(printf '%s ' /Applications/Xcode_*.app)); using $(xcode-select -p)"
+          fi
+
+      - name: Host tools
+        run: |
+          brew install llvm lld mtools dtc
+          if ! command -v unifdef >/dev/null; then
+            brew install unifdef
+            echo "$(brew --prefix unifdef)/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Report the toolchain
+        run: |
+          sw_vers; uname -m; sysctl -n hw.ncpu hw.memsize
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphoneos --find mig
+          clang --version | head -n 1
+          python3 --version
+          missing=0
+          for tool in git make clang cmake ninja unifdef dtc xcodebuild; do
+            path=$(command -v "$tool" || true); printf '%-10s %s\n' "$tool" "${path:-MISSING}"; [ -n "$path" ] || missing=1
+          done
+          df -h "$GITHUB_WORKSPACE"
+          exit "$missing"
+
+      - name: UniXNU at the pinned revision, as a checkout of its own
+        run: |
+          pin=$(git ls-tree HEAD third_party/UniXNU | awk '{print $3}')
+          echo "UniXNU $pin"
+          git init -q "$UNIXNU"
+          git -C "$UNIXNU" remote add origin https://github.com/UniXNU/UniXNU
+          git -C "$UNIXNU" fetch -q --depth 1 origin "$pin"
+          git -C "$UNIXNU" -c advice.detachedHead=false checkout -q FETCH_HEAD
+          git -C "$UNIXNU" submodule update --init --depth 1
+
+      - name: Board check (as in CI)
+        run: python3 scripts/pipa_unixnu.py check --unixnu "$UNIXNU" --in-place --work "$WORK" --adt --json "$WORK/pipa-board.json"
+
+      - name: Fetch sources
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- fetch
+
+      - name: Configure
+        run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig pipa_macos26_defconfig
+
+      - name: Compile and link the native kernel (no prelink)
+        id: kernel
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- build kernel --skip-prelink -j "$(sysctl -n hw.ncpu)"
+
+      - name: Report on the kernel (nothing is uploaded but this text)
+        id: report
+        if: always() && steps.kernel.outcome != 'skipped'
+        run: python3 scripts/kernel_report.py --work "$UNIXNU/out" --json "$WORK/kernel-report.json"
+
+      - name: Prelink with the official macOS 26.5 kernelcache
+        id: prelink
+        if: inputs.prelink && steps.kernel.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- build prelink
+
+      - name: Collect the text logs
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/public"
+          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$RUNNER_TEMP/public/" 2>/dev/null || true
+          python3 - <<'EOF'
+          import os
+          from pathlib import Path
+          out = Path(os.environ["UNIXNU"]) / "out"
+          target = Path(os.environ["RUNNER_TEMP"]) / "public" / "logs"
+          target.mkdir(parents=True, exist_ok=True)
+          n = 0
+          for path in sorted(out.rglob("*.log")) if out.is_dir() else []:
+              data = path.read_bytes()
+              if b"\0" in data:
+                  continue
+              name = "__".join(path.relative_to(out).parts)
+              (target / name).write_bytes(data)
+              n += 1
+          print(f"{n} text logs staged")
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipa-kernel-build-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/public
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        env:
+          KERNEL: ${{ steps.kernel.outcome }}
+          REPORT: ${{ steps.report.outcome }}
+          PRELINK: ${{ steps.prelink.outcome }}
+        run: |
+          {
+            echo "## pipa kernel step (macOS 26.5, xnu-12377.121.6)"
+            echo
+            echo "| Step | Result |"
+            echo "| --- | --- |"
+            echo "| compile + link native kernel | ${KERNEL:-skipped} |"
+            echo "| linked kernel found and inspected | ${REPORT:-skipped} |"
+            echo "| prelink with the 26.5 kernelcache | ${PRELINK:-skipped} |"
+            echo
+            if [ -f "$WORK/kernel-report.json" ]; then echo '```json'; head -c 4000 "$WORK/kernel-report.json"; echo; echo '```'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove Apple inputs and build outputs
+        if: always()
+        run: rm -rf "$UNIXNU/out" "$UNIXNU/.cache"
