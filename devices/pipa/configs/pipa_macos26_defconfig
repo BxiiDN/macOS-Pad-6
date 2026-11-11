@@ -12,6 +12,11 @@
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 
 CONFIG_XNU_BUILD_ARCHIVES=y
+# corecrypto from source, started by the kernel, as UniXNU-sheng's macOS defconfig. The macOS fragment's "prelinked" mode
+# compiles prng_random.c without the source-provider entry (source_corecrypto14_original/_start_once) that the arm64e
+# series' OSKext hunk (native-security-init.patch) still calls under XNU_SOURCE_CORECRYPTO14: the first link stopped on
+# both (kernel-build.yml, 2026-11-11).
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
 # The panic text on the frame buffer from the DT panic region, as UniXNU-pipa's kernel (there is no UART on pipa).
 CONFIG_XNU_DT_PANIC_REGION=y
 # The macOS kernel collection keeps its linked addresses; the native kernel joins it with chained fixups, as on

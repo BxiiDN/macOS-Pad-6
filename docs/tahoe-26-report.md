@@ -70,7 +70,7 @@ Konsekuensinya:
 
 - **Target: Tahoe 26.5**, satu-satunya rilis Tahoe terbaru yang source kernelnya cocok persis. Ini juga revisi yang dipakai UniXNU.
 - **Perbedaan 26.5 vs 27.3:** profil 27.3 UniXNU menjalankan kernel 26.5 dengan **4 patch Darwin 26** (syscall, KPI, shared region, KPI macOS) agar userland 27.3 jalan. Untuk 26.5 keempatnya tidak boleh dipasang. Patch macOS lain (firmlink, cryptex, union root, timebase 24 MHz, dan seterusnya) tetap diperlukan.
-- **Bukti apply** (`scripts/check_patch_chain.py`): rantai 27.3 asli apply 120/120 (validasi alat). Rantai pipa Tahoe 26.5 apply **119/119** (urutan `devices/pipa/board.toml`), terdiri dari seri arm64e UniXNU, lapisan SoC SM8250 arm64e, seri OS tanpa 4 patch Darwin 26, patch AMP pipa, patch null-PAC, dan patch FGE.
+- **Bukti apply** (`scripts/check_patch_chain.py`): rantai 27.3 asli apply 120/120 (validasi alat). Rantai pipa Tahoe 26.5 apply **120/120** (urutan `devices/pipa/board.toml`), terdiri dari seri arm64e UniXNU, lapisan SoC SM8250 arm64e, seri OS tanpa 4 patch Darwin 26, patch AMP pipa, patch null-PAC, patch FGE, dan default fitur board yang belum ada (owner root, exit trace).
 - **Kernel harus arm64e dengan `HAS_APPLE_PAC`.** Tanpanya `ml_grade_binary` menolak biner arm64e (`cpu_subtype` hanya ARM64E bila `HAS_APPLE_PAC`), padahal semua biner sistem Tahoe adalah `x86_64 arm64e` saja (§3).
 - **Mode null-PAC** (`devices/pipa/patches/xnu-12377/null-pac-armv82.patch`):
   - tidak ada pemrograman register kunci;
@@ -98,7 +98,7 @@ Konsekuensinya:
 | Hambatan | Status |
 | --- | --- |
 | Instruksi PAC di kernel dan kext | **teratasi di host**: pacstrip pada KC 26.5 nyata, sisa 42 PACGA → FGE |
-| PACGA di jalur exception (thread state) | **teratasi di source**: patch null-PAC, apply di rantai 119/119 |
+| PACGA di jalur exception (thread state) | **teratasi di source**: patch null-PAC, apply di rantai 120/120 |
 | Register kunci PAC tidak ada di v8.2 | **teratasi di source** (null-PAC) + pacstrip (102 MSR di KC) |
 | Kernel harus arm64e agar biner arm64e diterima | dipertahankan (`HAS_APPLE_PAC`) |
 | ERETAA/ERETAB | hanya pacstrip (FGE tidak bisa: ELR ditimpa trap) |
@@ -116,7 +116,7 @@ Konsekuensinya:
   - mode null-PAC dan penolakan mode thread-state bertanda tangan;
   - tes host glue (17 cek).
 - pacstrip dan audit: scanner C dengan paritas Python; parsing fat, MH_FILESET, dyld cache multi-file, chained fixups, dan simbol.
-- Rantai patch Tahoe 26.5 pipa 119/119, beserta pemeriksaan bahwa patch yang di-commit masih sesuai sumber.
+- Rantai patch Tahoe 26.5 pipa 120/120, beserta pemeriksaan bahwa patch yang di-commit masih sesuai sumber.
 - Board pipa format 2 (`devices/pipa`) dengan profil 26.5 sebagai default, di-resolve `unixnu status` (lihat [board-migration.md](board-migration.md)).
 - Profil `macos-26.5-25F71` dimuat dan di-resolve oleh `unixnu status` (135 patch, nol patch Darwin 26).
 

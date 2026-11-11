@@ -11,7 +11,7 @@ Diperbarui: 2026-11-11 (setelah audit Tahoe 26.x, lihat [tahoe-26-report.md](tah
 | Board pipa format 2 (`devices/pipa`) | EXPERIMENTAL | di-resolve `unixnu status` untuk 26.5 dan iPadOS 17, ADT dihasilkan dari DTS (CI); belum di-build ([board-migration.md](board-migration.md)) |
 | Boot macOS Tahoe di pipa | NOT IMPLEMENTED | belum ada kernel yang di-build ([kernel-build.md](kernel-build.md)) |
 | Profil UniXNU `macos-26.5-25F71` | EXPERIMENTAL | nilai dari IPSW resmi; di-resolve oleh `unixnu status` (135 patch, nol patch Darwin 26); belum di-build |
-| Rantai patch XNU Tahoe 26.5 untuk pipa | WORKING (apply) | 119/119 apply di xnu-12377.121.6 dalam urutan board (CI); belum di-build |
+| Rantai patch XNU Tahoe 26.5 untuk pipa | WORKING (apply) | 120/120 apply di xnu-12377.121.6 dalam urutan board (CI); belum di-build |
 | Mode null-PAC (`HAS_NULL_PAC`) | EXPERIMENTAL | patch apply; belum di-build |
 | pacstrip pada kernelcache Tahoe 26.5 asli | WORKING (host) | 778.340 instruksi PAC ditulis ulang, sisa 42 PACGA (bukti tahoe-26.5) |
 | Emulasi SHA3/SHA512 (FGE) | WORKING (host) | model Python + oracle QEMU |

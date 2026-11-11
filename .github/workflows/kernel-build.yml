@@ -1,4 +1,4 @@
-# Kernel step of devices/pipa (macOS Tahoe 26.5, xnu-12377.121.6 + 119 patches) on a macOS runner, the
+# Kernel step of devices/pipa (macOS Tahoe 26.5, xnu-12377.121.6 + 120 patches) on a macOS runner, the
 # platform UniXNU builds on (after UniXNU's own .github/workflows/macos.yml). It compiles and links the native
 # XNU kernel; the prelink with the official 26.5 kernelcache (read by HTTP range requests) is optional.
 # Only text logs and a JSON report (sizes, hashes, Mach-O header, ISA census) are uploaded: the kernel and every

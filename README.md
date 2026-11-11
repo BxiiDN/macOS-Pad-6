@@ -7,7 +7,7 @@ Riset dan implementasi untuk menjalankan **macOS asli (XNU + userland Apple)** d
 > - audit biner Tahoe asli (IPSW resmi 26.5 dan sistem 26.7.2 di runner Apple Silicon);
 > - profil UniXNU `macos-26.5-25F71` yang dibuat dari IPSW itu;
 > - board pipa dalam format 2 UniXNU (`devices/pipa`) dengan Tahoe 26.5 sebagai profil default; di-resolve oleh `unixnu status` dan dicek CI ([docs/board-migration.md](docs/board-migration.md));
-> - rantai patch XNU untuk pipa (119/119 apply, urutan sama dengan board);
+> - rantai patch XNU untuk pipa (120/120 apply, urutan sama dengan board);
 > - lapisan yang menangani hambatan utama: CPU Pad 6 (ARMv8.2) tidak punya Pointer Authentication, sedangkan seluruh macOS untuk ARM adalah arm64e.
 >
 > Belum ada kernel macOS yang berhasil di-compile dan di-link untuk pipa; kesiapan build ada di [docs/kernel-build.md](docs/kernel-build.md). Laporan lengkap ada di [docs/tahoe-26-report.md](docs/tahoe-26-report.md); status per fitur di [docs/compatibility.md](docs/compatibility.md).
