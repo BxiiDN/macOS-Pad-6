@@ -1,0 +1,68 @@
+# Source validation, static checks, host tests, cross builds and the XNU patch check.
+# Nothing here touches a device or downloads Apple software.
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  XNU_REVISION: ac9718fb1af618d5ce8678d0dc6e8a58f252216f   # xnu-12377.121.6, as pinned by UniXNU
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: SPDX headers on every source file
+        run: |
+          missing=$(git ls-files '*.c' '*.h' '*.py' '*.sh' '*.yml' '*.txt' \
+            | grep -v '^third_party/' \
+            | xargs grep -L 'SPDX-License-Identifier' || true)
+          if [ -n "$missing" ]; then echo "missing SPDX: $missing"; exit 1; fi
+      - name: No Apple binaries or firmware in the tree
+        run: |
+          bad=$(git ls-files | grep -E '\.(ipsw|dmg|im4p|img4|kernelcache|aea|bin|fw|elf)$' || true)
+          if [ -n "$bad" ]; then echo "binary payload committed: $bad"; exit 1; fi
+      - name: Python syntax
+        run: python3 -m compileall -q tools tests scripts
+      - name: Shell lint
+        run: shellcheck scripts/*.sh tests/xnu_shim/check.sh
+      - name: Submodule pins match docs/audit.md
+        run: |
+          for sha in $(git ls-tree -r HEAD third_party | awk '$2=="commit"{print substr($3,1,12)}'); do
+            grep -q "$sha" docs/audit.md || { echo "pin $sha not documented"; exit 1; }
+          done
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld llvm
+          clang --version | head -1
+          llvm-mc --version | head -2
+      - name: Fetch XNU at the pinned revision (patch check only)
+        run: |
+          git init -q "$RUNNER_TEMP/xnu"
+          git -C "$RUNNER_TEMP/xnu" remote add origin https://github.com/apple-oss-distributions/xnu
+          git -C "$RUNNER_TEMP/xnu" fetch -q --depth 1 origin "$XNU_REVISION"
+          git -C "$RUNNER_TEMP/xnu" checkout -q FETCH_HEAD
+      - name: Tests, cross builds, static ISA gate, patch check
+        run: XNU="$RUNNER_TEMP/xnu" scripts/test.sh
+      - name: CMake + Ninja build
+        run: |
+          sudo apt-get install -y -qq ninja-build
+          cmake -S kernel/fge -B build/cmake -G Ninja
+          ninja -C build/cmake
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpu-features-probe
+          path: build/device/cpu_features_probe

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+build/
+__pycache__/
+*.pyc
+# Apple software and device firmware never go into this repository.
+*.ipsw
+*.dmg
+*.im4p
+*.kernelcache

@@ -1,0 +1,12 @@
+[submodule "third_party/UniXNU"]
+	path = third_party/UniXNU
+	url = https://github.com/UniXNU/UniXNU.git
+	branch = main
+[submodule "third_party/UniXNU-pipa"]
+	path = third_party/UniXNU-pipa
+	url = https://github.com/xVanTuring/UniXNU-pipa.git
+	branch = main
+[submodule "third_party/uefi-pipa"]
+	path = third_party/uefi-pipa
+	url = https://github.com/xVanTuring/uefi-pipa.git
+	branch = pipa
