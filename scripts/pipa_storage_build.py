@@ -197,6 +197,15 @@ def main():
         # The tail is mostly warnings; the job log is the only place the errors can be read (artifacts are not), so
         # every error line with the source line after it goes to stdout as well.
         print("\n".join(compile_errors(p.stdout + p.stderr)))
+        # build-sheng-source-drivers.py keeps each source's whole compiler output in <stem>.log and raises with
+        # only its last 5000 characters: the errors are in those files.
+        for log in sorted((tree / "build/sheng-source-storage").rglob("*.log")):
+            if log.name == "pipa-recipe.log":
+                continue
+            errors = compile_errors(log.read_text(errors="replace"))
+            if errors:
+                print(f"== {log.relative_to(tree)}")
+                print("\n".join(errors))
         sys.exit(f"build-sheng-source-storage.py failed ({p.returncode})")
     result = {"env": env, "iostoragefamily": commit, "inputs": inputs, **check_archive(tree)}
     print(json.dumps({k: v for k, v in result.items() if k != "report"}, indent=2))
