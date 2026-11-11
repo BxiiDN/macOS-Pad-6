@@ -9,14 +9,14 @@ Diperbarui: 2026-11-11 (setelah audit Tahoe 26.x, lihat [tahoe-26-report.md](tah
 | Area | Status | Bukti / alasan |
 | --- | --- | --- |
 | Board pipa format 2 (`devices/pipa`) | EXPERIMENTAL | di-resolve `unixnu status` untuk 26.5 dan iPadOS 17, ADT dihasilkan dari DTS (CI); belum di-build ([board-migration.md](board-migration.md)) |
-| Boot macOS Tahoe di pipa | NOT IMPLEMENTED | kernel native sudah ter-link, tetapi belum di-prelink, belum ada payload, belum dijalankan ([kernel-build.md](kernel-build.md)) |
+| Boot macOS Tahoe di pipa | NOT IMPLEMENTED | kernel collection sudah di-prelink, tetapi belum di-`pacstrip`, belum ada payload, belum dijalankan ([kernel-build.md](kernel-build.md)) |
 | Profil UniXNU `macos-26.5-25F71` | EXPERIMENTAL | nilai dari IPSW resmi; di-resolve oleh `unixnu status` (135 patch, nol patch Darwin 26); belum di-build |
 | Rantai patch XNU Tahoe 26.5 untuk pipa | WORKING (apply) | 121/121 apply di xnu-12377.121.6 dalam urutan board (CI); belum di-build |
 | Mode null-PAC (`HAS_NULL_PAC`) | EXPERIMENTAL | ter-compile di kernel pipa; belum di-boot |
 | pacstrip pada kernelcache Tahoe 26.5 asli | WORKING (host) | 778.340 instruksi PAC ditulis ulang, sisa 42 PACGA (bukti tahoe-26.5) |
 | Emulasi SHA3/SHA512 (FGE) | WORKING (host) | model Python + oracle QEMU |
 | Emulasi FCMA, FHM, FRINTTS | NOT IMPLEMENTED | FCMA/FHM ada di libBLAS, libSparseBLAS, libBNNS, libsystem_m (1×) |
-| Kernel XNU target macOS untuk pipa | EXPERIMENTAL (build) | xnu-12377.121.6 + rantai board (120 patch saat link pertama), arm64e `MH_EXECUTE` compile + link berhasil di runner macOS (2026-11-11, SHA-256 `8f725741…`); FGE ter-link; belum prelink/boot |
+| Kernel XNU target macOS untuk pipa | EXPERIMENTAL (build) | xnu-12377.121.6 + 121 patch: kernel native arm64e compile + link (SHA-256 `ce13aea1…`, reproducible) dan prelink dengan kernelcache 26.5 J274AP (kernel collection `MH_FILESET` 135.036.928 byte, SHA-256 `840488d5…`) berhasil di runner macOS, 2026-11-11; belum `pacstrip`, belum boot |
 | Emulasi PAuth/JSCVT/FlagM/SB/LRCPC2/DIT (FGE), logika | WORKING (host) | `tests/fge`, termasuk 40.000 vektor acak FJCVTZS vs model rasional, fuzz decoder vs LLVM |
 | FGE di dalam XNU | EXPERIMENTAL | ter-compile dan ter-link di kernel pipa (simbol `_fge_xnu_handle` dll.); belum di-boot |
 | Penulisan ulang PAC statis (pacstrip) | WORKING (host) | kesetaraan setiap rewrite dicek via decode LLVM; data-in-code tidak disentuh |

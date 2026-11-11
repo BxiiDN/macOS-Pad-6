@@ -2,7 +2,7 @@
 
 Untuk sesi berikutnya. Baca ini dulu; jangan ulangi riset atau langkah yang sudah tercatat di sini.
 
-Diperbarui: 2026-11-11 (setelah percobaan build kernel ke-5). Cabang kerja: `board-migration-wip` (PR #1 ke `main`). `main` tidak diubah sejak `5b89722`.
+Diperbarui: 2026-11-11 (setelah percobaan build kernel ke-10). Cabang kerja: `board-migration-wip` (PR #1 ke `main`). `main` tidak diubah sejak `5b89722`.
 
 ## Target (tetap)
 
@@ -15,8 +15,9 @@ macOS Tahoe **26.5 (25F71)**, XNU **12377.121.6** (`ac9718fb1af6`), Xiaomi Pad 6
 | Audit Tahoe 26.x, profil `macos-26.5-25F71` | selesai | `docs/tahoe-26-report.md`, `docs/evidence/tahoe-26.5/` |
 | Board pipa UniXNU format 2 (`devices/pipa`) | selesai, di-resolve, dicek CI | `docs/board-migration.md`, artefak CI `pipa-board-status` |
 | Rantai patch | 121/121 apply ke xnu-12377.121.6 dalam urutan board | `scripts/check_patch_chain.py`, `pipa_unixnu.py check --xnu` |
-| Compile + link kernel native (arm64e) | **berhasil** (percobaan 2) | `docs/kernel-build.md`, run 42980033161 |
-| Prelink dengan kernelcache 26.5 | **gagal** (percobaan 3, 4): `__TEXT` native 0x19c000 tidak muat; celah terbesar di `__PRELINK_TEXT` kurang 38.944 byte | `docs/kernel-build.md` percobaan 4 |
+| Compile + link kernel native (arm64e) | **berhasil**; `__TEXT` `0x188000`, 0 import | `docs/kernel-build.md` percobaan 2, 8, 9 |
+| Build reproducible | **ya**: dua build dari nol identik bit demi bit (`ce13aea1…`) | percobaan 8, 9 |
+| Prelink dengan kernelcache 26.5 | **berhasil**: `MH_FILESET` arm64e 135.036.928 byte (`840488d5…`), 0 import | percobaan 9, 10, run 42994058285 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Payload, boot image | belum | |
 | Boot di tablet | belum | |
@@ -35,7 +36,9 @@ scripts/pipa-unixnu.sh check --adt          # butuh dtc; --xnu DIR untuk cek app
 Build kernel tidak bisa di Linux tanpa toolchain UniXNU (LLVM yang di-patch, cctools-port, root). Jalurnya adalah `.github/workflows/kernel-build.yml` di runner `macos-26`:
 
 - push ke `board-migration-wip` dengan `[kernel-build]` di pesan commit: fetch, defconfig, compile + link (`--skip-prelink`), laporan;
-- `[kernel-prelink]`: sama, ditambah `build prelink` dan laporan kernel collection;
+- `[kernel-prelink]`: sama, ditambah `build prelink`, tata letak `__PRELINK_TEXT` (`prelink_layout.py`) dan laporan kernel collection serta catatan XnuPrelink (`prelink_record.py`);
+- `[kernel-repro]`: build kedua dari nol di tempat yang sama, dibandingkan per section (`kernel_report.py --compare`);
+- setiap build menjalankan `kernel_size_audit.py` (section, asal per link map, string per patch).
 - `workflow_dispatch` baru bisa setelah workflow ada di `main`.
 
 Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (unduhan artefak diblokir proxy sesi Claude). Laporan kernel ada di log langkah "Report on the kernel".
@@ -44,12 +47,14 @@ Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (u
 
 1. Source `feeds.toml` dioper ke UniXNU sebagai `--local-module` oleh `scripts/pipa_unixnu.py`; tanpa itu UniXNU memakai `UniXNU/ArmCpu` dan bukan cabang pipa (G1).
 2. `CONFIG_XNU_CRYPTO_BOOTSTRAP="source"` di `pipa_macos26_defconfig` (seperti UniXNU-sheng macOS); mode `prelinked` dari `macos.config` gagal link.
-3. `zzzz-pipa-macos-absent-features.patch`: owner root tidak ada (open terautentikasi tetap `EAUTH`), `native_exit_trace` weak no-op.
+3. `zzzz-pipa-macos-absent-features.patch`: owner root tidak ada (open terautentikasi tetap `EAUTH`), `native_exit_trace` no-op **strong** (versi weak menjadi import chained fixup yang ditolak XnuPrelink).
 4. Kernel macOS pipa sengaja hanya jalur generik (ArmDTPlatform, ArmCpu, corecrypto, pthread). Akhir boot yang diharapkan: panic mount root.
+5. Ukuran `__TEXT`: `-fmacro-prefix-map` (defconfig) dan `zzzzb-pipa-long-assert-text.patch` (teks `assert()` > 48 byte diganti catatan bersama; pemeriksaan, trap, file:line tetap). String dari patch hanya ±3 KB, jadi memangkas diagnostik patch tidak berguna untuk ukuran. Sisa ruang di celah `__PRELINK_TEXT`: 42.976 byte; bila kernel tumbuh, `prelink_layout.py` menunjukkan sisanya, dan `MACH_ASSERT_EXPR_MAX` bisa diturunkan lewat `CONFIG_XNU_EXTRA_CFLAGS` (`-DMACH_ASSERT_EXPR_MAX=40`).
+6. `KERNEL_BUILD_DATE` dipin dari `SOURCE_DATE_EPOCH` atau waktu commit HEAD (`pipa_unixnu.py`); itulah satu-satunya sumber perbedaan antar-build sebelumnya.
 
 ## Langkah berikutnya, berurutan
 
-1. Prelink: `__TEXT` native harus turun ≥ 38.944 byte agar muat di celah setelah `AppleARMWatchdogTimer` (angka di `docs/kernel-build.md`, percobaan 4). Ukuran section sudah diukur (percobaan 5: `__cstring` 1.116.153 byte, `__os_log` 281.834, `__const` 279.432); `vmsize` harus turun dari `0x19c000` ke `0x190000`. Pangkas yang terbesar yang bukan milik Apple (string diagnostik patch UniXNU/pipa, tabel FGE) atau pertimbangkan perubahan XnuPrelink, lalu push dengan `[kernel-prelink]`.
+1. ~~Prelink~~: berhasil (percobaan 9). Periksa jumlah target yang tidak terpasang/di-stub di catatan XnuPrelink (percobaan 10, `prelink-record-summary.json`) sebelum menilai kesiapan boot.
 2. Pasang `tools/isa/pacstrip` ke kernel collection hasil prelink di workflow, lalu gerbang `python3 -m tools.isa.audit KC --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`.
 3. `build payload` (butuh `UNIXNU_UNIQUE_CHIP_ID` sebagai secret repo; board `unique_chip_id = "required"`) dan `bootimg`. Tidak di-commit, tidak diunggah.
 4. Uji di tablet hanya oleh pemilik, dengan `fastboot boot` (tidak menulis apa pun). Target pertama: bar entry probe, lalu panic `Failed to mount root device`.

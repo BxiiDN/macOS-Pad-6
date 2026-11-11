@@ -1,12 +1,12 @@
 # Build kernel macOS Tahoe 26.5 untuk pipa
 
-Status: **kernel native XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) berhasil di-compile dan di-link** di runner macOS (percobaan 2, 2026-11-11). Belum di-prelink dengan kext kernelcache 26.5, belum dilewatkan `pacstrip`, belum di-boot. Klaim di halaman ini hanya yang ada buktinya di log run yang ditautkan.
+Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berhasil di-compile, di-link, dan di-prelink** dengan kext kernelcache resmi 26.5 (J274AP 25F71) di runner macOS, dan build kernel native-nya **reproducible bit demi bit** (percobaan 8–9, 2026-11-11). Kernel collection belum dilewatkan `pacstrip`, belum dimasukkan ke payload, dan **belum di-boot** di perangkat atau emulator. Klaim di halaman ini hanya yang ada buktinya di log run yang ditautkan.
 
 ## Apa yang dibangun
 
 `unixnu build kernel` untuk `devices/pipa` dengan profil `macos-26.5-25F71`:
 
-1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 120 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada).
+1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 121 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
 2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig`.
 3. Arsip yang di-link ke kernel: corecrypto sumber (dua kali, kedua dengan namespace), ArmDTPlatform, ArmCpu cabang pipa, libpthread kernel.
 4. Hasil: kernel native `mach.development.bcm2837` (Mach-O `MH_EXECUTE`, arm64e), lalu (tanpa `--skip-prelink`) prelink dengan kext dari kernelcache J274AP 26.5 asli.
@@ -18,17 +18,19 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Syarat | Status | Bukti |
 | --- | --- | --- |
 | Board format 2 di-resolve UniXNU untuk 26.5 dan override iPadOS | siap | `scripts/pipa-unixnu.sh check` |
-| 120/120 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
+| 121/121 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
 | Patch ARMv8.2 (null-PAC, FGE) sesuai sumber `kernel/` | siap | `gen_tahoe_patches.py --check` |
 | Device tree → ADT dengan nilai board | siap | `check --adt` |
 | ArmCpu cabang pipa dari pin `feeds.toml` | siap (resolusi) | G1 di board-migration.md |
 | Toolchain kernel step (macos-26, Xcode 26.6, SDK iphoneos 26.5) | siap | percobaan 1 |
-| Kompilasi XNU arm64e dengan rantai board | **berhasil** | percobaan 1 (119 patch), percobaan 2 (120 patch) |
+| Kompilasi XNU arm64e dengan rantai board | **berhasil** | percobaan 1 (119 patch), 2 (120), 8–9 (121) |
 | Arsip: corecrypto ×2, ArmDTPlatform, ArmCpu cabang pipa, libpthread | **berhasil dibangun** terhadap header xnu-12377 | percobaan 1 |
 | Linking kernel native | **berhasil** di percobaan 2 (percobaan 1 gagal pada 5 simbol) | lihat riwayat |
-| Lapisan ARMv8.2 ter-link | **ya**: `_fge_xnu_init`, `_fge_xnu_handle`, `_fge_emulate` ada di tabel simbol | percobaan 2 |
-| Prelink dengan kernelcache 26.5 | **gagal** di percobaan 3: `__TEXT` native tidak muat di `__PRELINK_TEXT` | lihat riwayat |
-| Build bit-for-bit reproducible | **tidak** (SHA-256 berbeda antar-run) | percobaan 2 vs 3 |
+| Lapisan ARMv8.2 ter-link | **ya**: simbol FGE ada; di kode mesin `sleh_synchronous` memanggil `fge_xnu_handle` dan `ml_addrperm_pacga` berbadan null-PAC | percobaan 2, 8–9 |
+| `__TEXT` native muat di `__PRELINK_TEXT` 26.5 | **ya**: `0x188000` (awal `0x19c000`), sisa 42.976 byte | percobaan 8 |
+| Tanpa import chained fixup | **ya** (0 import) | percobaan 9 |
+| Prelink dengan kernelcache 26.5 | **berhasil** di percobaan 9 (percobaan 3–8 gagal: tata letak, lalu import) | lihat riwayat |
+| Build bit-for-bit reproducible (kernel native) | **ya** sejak `KERNEL_BUILD_DATE` dipin (dua build dari nol identik) | percobaan 8, 9 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Boot di tablet | belum | |
 
@@ -184,3 +186,14 @@ Reproducibility: dua build dari nol dengan source dan lokasi sama berbeda SHA-25
 - Integrasi tetap: `sleh_synchronous` memanggil `fge_xnu_handle` (1 call site), `ml_addrperm_pacga` diawali badan null-PAC (`orr x0, x0, #1; ret`), sensus ISA sama (57.243 word PAuth, 0 di luar FGE).
 - **Reproducibility**: build kedua dari nol di tempat yang sama menghasilkan kernel identik bit demi bit: SHA-256 `7db1659a583282e1835af9b5ef47aa918eb05996e04ee2234352887781768e00` dan `LC_UUID` sama, tidak ada section atau blob link-edit yang berbeda.
 - Prelink berhenti pada penyebab berikutnya: **`Chained fixup imports are not supported`** (`kc_image.py`). Penyebabnya patch `zzzz` saya sendiri: `native_exit_trace` didefinisikan `weak`, dan definisi weak di executable Mach-O di-bind lewat weak lookup, yang ditulis linker sebagai import chained fixup (lib ordinal −3; direproduksi dengan lld: weak → 1 import, strong → 0). Diperbaiki di commit `50736cd`: definisi biasa (strong).
+
+### Percobaan 9 — 2026-11-11, commit `50736cd`, run [42994058285](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42994058285): **prelink berhasil**
+
+- Kernel native: SHA-256 `ce13aea1586d2e425b10f48170d884f2b0f4af1348ab32ae459f3074e7e5ddec`, 25.048.584 byte, `MH_EXECUTE` arm64e, `__TEXT` `0x188000`, **0 import chained fixup**. `sleh_synchronous` memanggil `fge_xnu_handle`; `ml_addrperm_pacga` berbadan null-PAC.
+- `build prelink`: kernelcache dari `UniversalMac_26.5_25F71_Restore.ipsw` (HTTP range, pin SHA-256 profil). `scripts/prelink_layout.py`: `__TEXT` native muat (sisa 42.976 byte).
+- Hasil: `kernel/kernel.macho`, **kernel collection `MH_FILESET` arm64e**, 135.036.928 byte, SHA-256 `840488d5d4b6ea38df85bbe210b24e170bbe012f28c47ff53936697a5dc66e3c`, `LC_UUID` `29f1b7a9e6a8f673fb8297457a4ba754`, 93 load command, 0 import. Segmen: `__TEXT` @ `0xfffffff007004000`, `__PRELINK_TEXT` (`0xcc0000`), `__DATA_CONST`, `__TEXT_EXEC` (`0x360c000`), `__PRELINK_INFO`, `__DATA`, `__LINKEDIT`, `__KLDDATA`, `__BOOTDATA`.
+- Catatan XnuPrelink (`kernel.json`): `format` `MH_FILESET`; input `kernelcache_sha256` `19ae26f4…` (= pin profil) dan `native_sha256` `ce13aea1…` (= kernel native run ini); entry `com.apple.kernel`; `matcher_version` 8; pemasangan simbol `symbol-names`; closure kext yang dipertahankan dicantumkan (AppleARMPlatform, AppleMobileFileIntegrity, apfs, IOHIDFamily, IOGPUFamily, …). Pemeriksaan regresi prelink UniXNU lolos (langkah berhasil). Jumlah target yang tidak terpasang/di-stub dicatat di percobaan 10.
+- Sensus ISA kernel collection (statis): 6.526.890 word kode di 80 image arm64e; yang tidak dimiliki SM8250: PAuth 290.710 (`pac-branch` 154.421, `pac-dp1` 136.278, `pacga` 7, `pac-keyreg` 4), SHA3 122, SHA512 32, DIT 21, LRCPC2 4, SB 1. **Semuanya di kelas yang ditangani FGE; 0 di luar FGE.** Tanpa `pacstrip`, setiap instruksi PAC non-hint itu akan trap ke FGE saat dieksekusi; `pacstrip` adalah langkah berikutnya.
+- Reproducibility: build kedua dari nol menghasilkan kernel native `ce13aea1…` lagi (SHA-256 dan `LC_UUID` sama, tidak ada section yang berbeda).
+
+Yang tidak dibuktikan: kernel collection ini belum di-`pacstrip`, belum masuk payload/boot image, dan belum dijalankan. Prelink yang lolos adalah syarat perlu, bukan bukti boot.
