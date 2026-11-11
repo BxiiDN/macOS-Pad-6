@@ -203,7 +203,9 @@ def main():
     apple = source_literals(args.xnu_source) if args.xnu_source else set()
     patches = [Path(p) for p in args.patches.read_text().split()] if args.patches else []
     added = [(p.name, patch_literals(p)) for p in patches]
-    prefixes = [p.encode() for p in args.strip_prefix]
+    # Normalized as the compiler sees them: a prefix given as ".../x/../y" would never match.
+    import os
+    prefixes = sorted({os.path.realpath(p).rstrip("/").encode() + b"/" for p in args.strip_prefix}, key=len, reverse=True)
     strings = {}
     for seg in m["segments"]:
         for sec in seg["sections"]:
@@ -237,6 +239,7 @@ def main():
                     "build_path_strings": prefix_count, "build_path_prefix_bytes": prefix_bytes,
                 }
     report["strings"] = strings
+    report["strip_prefixes"] = [p.decode() for p in prefixes]
     report["patches_considered"] = len(patches)
     text = json.dumps(report, indent=2)
     print(text)
