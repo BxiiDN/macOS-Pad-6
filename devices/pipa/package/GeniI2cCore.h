@@ -13,7 +13,7 @@
 //            target address; TX words written on the TX watermark, RX words read on the RX watermark or last word;
 //            address NACK, data NACK (told apart by M_GP_LENGTH, as Linux does), bus and arbitration errors from the
 //            GP IRQs; a command that does not finish is cancelled, then aborted.
-// It does not touch clocks, pins, GPI DMA or the packing configuration: those are the firmware's (geni_se_init and
+// It does not touch clocks, pins, the DMA/FIFO mode or the packing configuration: those are the firmware's (geni_se_init and
 // geni_se_config_packing in Linux). geni_i2c_check_clock() refuses a bus whose SCL counters are not the expected
 // ones, so a transfer never runs at an unknown speed.
 #ifndef PIPA_GENI_I2C_CORE_H
@@ -115,6 +115,7 @@ typedef enum {
     GENI_I2C_TIMEOUT,
     GENI_I2C_INVALID,        // bad arguments
     GENI_I2C_READ_ONLY,      // a write refused by the caller's policy (Ktz8866Driver.h)
+    GENI_I2C_DMA_MODE,       // the engine is in DMA mode; switching it to FIFO mode would change its configuration
 } GeniI2cStatus;
 
 typedef struct {
@@ -127,7 +128,7 @@ typedef struct {
 } GeniI2c;
 
 typedef struct {
-    uint32_t fw_revision, status, if_disable, m_clk_cfg, clk_sel, scl_counters, hw_param0;
+    uint32_t fw_revision, status, if_disable, m_clk_cfg, clk_sel, scl_counters, hw_param0, dma_mode;
     unsigned protocol, tx_fifo_depth;
 } GeniI2cInfo;
 
@@ -174,6 +175,7 @@ static inline GeniI2cStatus geni_i2c_probe(const GeniI2c *g, GeniI2cInfo *info) 
     info->clk_sel = g->read32(g->ctx, GENI_CLK_SEL);
     info->scl_counters = g->read32(g->ctx, GENI_I2C_SCL_COUNTERS);
     info->hw_param0 = g->read32(g->ctx, GENI_HW_PARAM_0);
+    info->dma_mode = g->read32(g->ctx, GENI_DMA_MODE_EN);
     info->protocol = GENI_FW_PROTOCOL(info->fw_revision);
     info->tx_fifo_depth = GENI_TX_FIFO_DEPTH(info->hw_param0);
     if (info->protocol != GENI_PROTOCOL_I2C)
@@ -182,6 +184,8 @@ static inline GeniI2cStatus geni_i2c_probe(const GeniI2c *g, GeniI2cInfo *info) 
         return GENI_I2C_FIFO_DISABLED;
     if (info->status & GENI_M_CMD_ACTIVE)
         return GENI_I2C_BUSY;
+    if (info->dma_mode & 1u)
+        return GENI_I2C_DMA_MODE;
     return GENI_I2C_OK;
 }
 
@@ -225,7 +229,8 @@ static inline GeniI2cStatus geni_i2c_one(const GeniI2c *g, const GeniI2cMsg *m, 
     uint32_t params = GENI_I2C_ADDR(m->addr) | (stretch ? GENI_I2C_STOP_STRETCH : 0);
     unsigned done = 0;
     g->write32(g->ctx, GENI_M_IRQ_CLEAR, 0xffffffffu);
-    g->write32(g->ctx, GENI_DMA_MODE_EN, 0);                         // FIFO mode
+    // FIFO mode is what geni_i2c_probe found (GENI_DMA_MODE_EN 0); it is not written here, so a transfer writes only the
+    // engine's command and data registers (IRQ clear, transfer length, M_CMD0, TX watermark and FIFO, M_CMD_CTRL to stop).
     if (m->read) {
         g->write32(g->ctx, GENI_I2C_RX_TRANS_LEN, m->len);
         g->write32(g->ctx, GENI_M_CMD0, GENI_M_CMD(GENI_I2C_READ, params));
@@ -297,7 +302,7 @@ static inline GeniI2cStatus geni_i2c_write_reg(const GeniI2c *g, uint8_t addr, u
 
 static inline const char *geni_i2c_status_name(GeniI2cStatus s) {
     static const char *const names[] = {"ok", "not-i2c", "fifo-disabled", "busy", "clock", "addr-nack", "data-nack",
-                                        "bus-error", "arb-lost", "failure", "timeout", "invalid", "read-only"};
+                                        "bus-error", "arb-lost", "failure", "timeout", "invalid", "read-only", "dma-mode"};
     return (unsigned)s < sizeof(names) / sizeof(names[0]) ? names[s] : "?";
 }
 

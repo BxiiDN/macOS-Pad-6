@@ -15,6 +15,16 @@ for t in BacklightBoardTests ButtonsTests GeniI2cTests GesturesTests GpuPowerBoa
 	"$out/$t"
 	pass=$((pass + 1))
 done
+# The backlight kernel shim on a simulated tablet (two sources), and the same file in kernel mode against the XNU shim
+# headers of tests/xnu_shim (a syntax and type check for arm64, not a kernel build).
+"$cc" "${flags[@]}" -o "$out/PipaBacklightTests" "$pkg/PipaBacklightTests.c" "$pkg/PipaBacklight.c"
+"$out/PipaBacklightTests"
+pass=$((pass + 1))
+if command -v clang >/dev/null; then
+	clang --target=arm64-apple-macos14 -mcpu=cortex-a77 -std=gnu11 -ffreestanding -DKERNEL -Wall -Wextra -Werror \
+		-I "$root/tests/xnu_shim/include" -fsyntax-only "$pkg/PipaBacklight.c"
+	echo "PipaBacklight.c: kernel mode OK (XNU shim headers, arm64)"
+fi
 kit="$root/third_party/UniXNU/kits/AdrenoFirmware"
 if [ "$(uname -m)" = aarch64 ] || [ "$(uname -m)" = arm64 ]; then
 	if [ ! -f "$kit/AdrenoHfi.c" ]; then

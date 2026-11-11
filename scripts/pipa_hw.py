@@ -55,12 +55,16 @@ LINUX_DTS = "arch/arm64/boot/dts/qcom/sm8250-xiaomi-pipa.dts"
 LINUX_DRIVERS = {"geni-se.h": "include/linux/soc/qcom/geni-se.h", "qcom-geni-se.c": "drivers/soc/qcom/qcom-geni-se.c",
                  "i2c-qcom-geni.c": "drivers/i2c/busses/i2c-qcom-geni.c", "i2c.h": "include/linux/i2c.h",
                  "ktz8866.c": "drivers/video/backlight/ktz8866.c"}
+# The clock and pin sources of the backlight bus (package/GeniI2cBoard.h), same commit.
+LINUX_BUS = {"gcc-sm8250.c": "drivers/clk/qcom/gcc-sm8250.c", "pinctrl-sm8250.c": "drivers/pinctrl/qcom/pinctrl-sm8250.c",
+             "sm8250.dtsi": "arch/arm64/boot/dts/qcom/sm8250.dtsi"}
 # The Adreno a6xx GMU sources scripts/gen_pipa_gmu.py generates pipa's GMU inputs from (same commit).
 LINUX_GPU = ["drivers/gpu/drm/msm/adreno/a6xx_gmu.c", "drivers/gpu/drm/msm/adreno/a6xx_gmu.h",
              "drivers/gpu/drm/msm/adreno/a6xx_catalog.c", "drivers/gpu/drm/msm/registers/adreno/a6xx.xml",
              "drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml"]
 SPARSE = ["/arch/arm64/boot/dts/qcom/sm8250*", "/arch/arm64/boot/dts/qcom/pm8150*", "/include/dt-bindings/",
-          "/include/uapi/linux/input-event-codes.h"] + ["/" + p for p in LINUX_DRIVERS.values()] + ["/" + p for p in LINUX_GPU]
+          "/include/uapi/linux/input-event-codes.h"] + ["/" + p for p in LINUX_DRIVERS.values()] + ["/" + p for p in LINUX_GPU] + \
+    ["/" + p for p in LINUX_BUS.values() if not p.endswith(".dtsi")]
 PKG = ROOT / "devices/pipa/package"
 VENDOR_GIT = "https://github.com/MiCode/kernel_devicetree"
 VENDOR_BRANCH = "pipa-t-oss"
@@ -781,8 +785,97 @@ def run_vendor(args):
         sys.exit("board facts disagree with the vendor pipa device tree")
 
 
+def bus_facts(linux):
+    """package/GeniI2cBoard.h against gcc-sm8250.c (branches, votes, the s3 RCG and its DFS registration),
+    pinctrl-sm8250.c (each pin's tile and the slot of its function) and sm8250.dtsi (qup_i2c11_default, i2c11's clock)."""
+    texts = {k: (Path(linux) / v).read_text() for k, v in LINUX_BUS.items()}
+    B = PKG / "GeniI2cBoard.h"
+    rows = []
+
+    def add(fact, repo_src, repo_fn, linux_src, linux_fn):
+        try:
+            repo = repo_fn()
+        except (KeyError, LookupError, ValueError) as e:
+            repo = f"ERROR {e}"
+        try:
+            lx = linux_fn()
+        except (KeyError, LookupError, ValueError, AttributeError) as e:
+            lx = f"ERROR {e}"
+        rows.append({"fact": fact, "repository": repo_src, "repo": repo, "linux_source": linux_src, "linux": lx})
+
+    def struct(kind, name):
+        m = re.search(rf"static struct {kind} {name} = \{{(.*?)\n\}};", texts["gcc-sm8250.c"], re.S)
+        if not m:
+            raise LookupError(f"gcc-sm8250.c: no {name}")
+        return m.group(1)
+
+    def branch(name):
+        b = struct("clk_branch", name)
+        get = lambda field: int(re.search(rf"\.{field} = (0x[0-9a-f]+)", b).group(1), 16)
+        return [get("halt_reg"), get("enable_reg"), 1 << int(re.search(r"\.enable_mask = BIT\((\d+)\)", b).group(1))]
+
+    for clk, halt, vote in (("gcc_qupv3_wrap1_core_2x_clk", "GIB_HALT_CORE_2X", "GIB_VOTE_WRAP1_CORE_2X"),
+                            ("gcc_qupv3_wrap1_core_clk", "GIB_HALT_CORE", "GIB_VOTE_WRAP1_CORE"),
+                            ("gcc_qupv3_wrap1_s3_clk", "GIB_HALT_S3", "GIB_VOTE_WRAP1_S3"),
+                            ("gcc_qupv3_wrap_1_m_ahb_clk", "GIB_HALT_M_AHB", "GIB_VOTE_WRAP1_M_AHB"),
+                            ("gcc_qupv3_wrap_1_s_ahb_clk", "GIB_HALT_S_AHB", "GIB_VOTE_WRAP1_S_AHB")):
+        add(clk, f"package/GeniI2cBoard.h {halt}, GIB_GCC_VOTE, {vote}",
+            lambda h=halt, v=vote: [macro(B, h), macro(B, "GIB_GCC_VOTE"), c_eval(c_defines(B.read_text())[v], {})],
+            f"{LINUX_BUS['gcc-sm8250.c']} {clk} halt_reg, enable_reg, enable_mask", lambda c=clk: branch(c))
+    add("gcc_qupv3_wrap_1_s_ahb_clk hardware gating", "package/GeniI2cBoard.h GIB_CBCR_HW_CTL (hwcg bit)",
+        lambda: [macro(B, "GIB_HALT_S_AHB"), c_eval(c_defines(B.read_text())["GIB_CBCR_HW_CTL"], {})],
+        f"{LINUX_BUS['gcc-sm8250.c']} gcc_qupv3_wrap_1_s_ahb_clk hwcg_reg, hwcg_bit",
+        lambda: (lambda b: [int(re.search(r"\.hwcg_reg = (0x[0-9a-f]+)", b).group(1), 16),
+                            1 << int(re.search(r"\.hwcg_bit = (\d+)", b).group(1))])(struct("clk_branch", "gcc_qupv3_wrap_1_s_ahb_clk")))
+    add("gcc_qupv3_wrap1_s3_clk_src", "package/GeniI2cBoard.h GIB_S3_RCG (+ DFS)", lambda: [macro(B, "GIB_S3_RCG"), True, 0],
+        f"{LINUX_BUS['gcc-sm8250.c']} cmd_rcgr, gcc_dfs_clocks entry, TCXO parent value",
+        lambda: [int(re.search(r"\.cmd_rcgr = (0x[0-9a-f]+)", struct("clk_rcg2", "gcc_qupv3_wrap1_s3_clk_src")).group(1), 16),
+                 "DEFINE_RCG_DFS(gcc_qupv3_wrap1_s3_clk_src)" in texts["gcc-sm8250.c"],
+                 int(re.search(r"gcc_parent_map_0\[\] = \{\s*\{ P_BI_TCXO, (\d+) \}", texts["gcc-sm8250.c"]).group(1))])
+
+    tiles = {"WEST": macro(B, "GIB_TILE_WEST"), "SOUTH": macro(B, "GIB_TILE_SOUTH")}
+    tile_name = {v: k for k, v in tiles.items()}
+    funcs = {"GIB_FUNC_QUP11": "qup11", "GIB_FUNC_GPIO": None}
+    text = B.read_text()
+    pins = re.findall(r"\{(GIB_GPIO_\w+|BKL_GPIO_\w+), (GIB_TILE_\w+), (GIB_FUNC_\w+), (\d), \"([^\"]+)\"\}", text)
+    for gpio_macro, tile, func, _, name in pins:
+        def repo(g=gpio_macro, t=tile, f=func):
+            gpio = macro(B, g) if g.startswith("GIB") else macro(PKG / "BacklightBoard.h", g)
+            return [gpio, tile_name[macro(B, t)], funcs[f] if funcs[f] else "gpio", macro(B, f)]
+
+        def lx(g=gpio_macro, f=func):
+            gpio = macro(B, g) if g.startswith("GIB") else macro(PKG / "BacklightBoard.h", g)
+            m = re.search(rf"\[{gpio}\] = PINGROUP\({gpio}, (\w+), ([^)]*)\)", texts["pinctrl-sm8250.c"])
+            slots = [x.strip() for x in m.group(2).split(",")]
+            want = funcs[f]
+            return [gpio, m.group(1), want if want else "gpio", (slots.index(want) + 1) if want else 0]
+        add(f"pin {name}", f"package/GeniI2cBoard.h gib_pins ({gpio_macro})", repo,
+            f"{LINUX_BUS['pinctrl-sm8250.c']} PINGROUP (tile, function slot)", lx)
+
+    src = Source()
+    src.parse(texts["sm8250.dtsi"], "sm8250.dtsi")
+    add("qup_i2c11_default pins and function", "package/GeniI2cBoard.h GIB_GPIO_SDA/SCL, qup11, 2 mA (code + 1) * 2, no bias",
+        lambda: [[f"gpio{macro(B, 'GIB_GPIO_SDA')}", f"gpio{macro(B, 'GIB_GPIO_SCL')}"], "qup11",
+                 (macro(B, "GIB_DRIVE_2MA") + 1) * 2, True],
+        "sm8250.dtsi qup_i2c11_default",
+        lambda: (lambda n: [n.strings("pins"), n.string("function"), n.u32("drive-strength"), n.flag("bias-disable")])(
+            src.label("qup_i2c11_default")))
+    add("TLMM tiles (west, south)", "package/GeniI2cBoard.h GIB_TLMM_BASE + GIB_TILE_WEST, + GIB_TILE_SOUTH",
+        lambda: [macro(B, "GIB_TLMM_BASE") + macro(B, "GIB_TILE_WEST"), macro(B, "GIB_TLMM_BASE") + macro(B, "GIB_TILE_SOUTH")],
+        "sm8250.dtsi tlmm reg by reg-names",
+        lambda: (lambda n: [dict(zip(n.strings("reg-names"), n.groups("reg")))[k][1] for k in ("west", "south")])(src.label("tlmm")))
+    add("i2c11 serial engine and clock", "package/BacklightBoard.h BKL_I2C_SE_BASE; GeniI2cBoard.h (wrap1 s3)",
+        lambda: [macro(PKG / "BacklightBoard.h", "BKL_I2C_SE_BASE"), "GCC_QUPV3_WRAP1_S3_CLK"],
+        "sm8250.dtsi i2c11 reg, clocks",
+        lambda: (lambda n: [n.u32s("reg")[1], n.cells("clocks")[1]])(src.label("i2c11")))
+    for r in rows:
+        bad = any(isinstance(r[k], str) and r[k].startswith("ERROR") for k in ("repo", "linux"))
+        r["result"] = "error" if bad else ("match" if r["repo"] == r["linux"] else "MISMATCH")
+    return rows
+
+
 def run_drivers(args):
-    rows = driver_facts(args.linux)
+    rows = driver_facts(args.linux) + bus_facts(args.linux)
     summary = {k: sum(1 for r in rows if r["result"] == k) for k in ("match", "MISMATCH", "error")}
     if args.json:
         Path(args.json).write_text(json.dumps({"linux": LINUX_COMMIT, "summary": summary, "facts": rows}, indent=2,
