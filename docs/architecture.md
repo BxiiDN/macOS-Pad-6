@@ -24,7 +24,8 @@ Repo ini tidak menduplikasi UniXNU atau UniXNU-pipa. Isinya hanya bagian yang be
 | `kernel/patches/xnu-12377/` | patch | Hasil `scripts/gen_xnu_patch.py`; apply bersih ke xnu `ac9718fb1af6` | `git apply --check` |
 | `tools/isa/audit.py` | Python | Sensus instruksi yang butuh fitur yang tidak dimiliki SM8250, di Mach-O, fat, MH_FILESET, dyld shared cache | tes dengan Mach-O hasil llvm-mc |
 | `tools/isa/pacstrip.py` | Python | Penulisan ulang statis PAC → ARMv8.2 yang setara | tes kesetaraan via decode LLVM |
-| `profiles/macos-26.5/` | TOML + patch | Profil OS UniXNU Tahoe 26.5 (dibuat `scripts/make_tahoe_profile.py` dari bukti IPSW), seri SoC SM8250, patch `null-pac-armv82` dan `fge-armv82` | `unixnu status`, rantai 118/118 `git apply` |
+| `profiles/macos-26.5/` | TOML | Profil OS UniXNU Tahoe 26.5 (dibuat `scripts/make_tahoe_profile.py` dari bukti IPSW) | `unixnu status` |
+| `devices/pipa/` | TOML + DTS + patch | Board pipa format 2: profil default 26.5, lapisan SoC arm64e, patch `zzyf-pipa-amp`, `null-pac-armv82`, `fge-armv82` | `scripts/pipa_unixnu.py check`, rantai 119/119 `git apply` |
 | `tools/isa/ipsw.py`, `inspect_macho.py`, `tahoe_audit.py`, `scan.c` | Python + C | Baca IPSW resmi via HTTP range; dyld cache multi-file; sensus per image | tes host; dijalankan pada biner asli di `tahoe-audit.yml` |
 | `tests/device/cpu_features_probe.c` | C (freestanding) | Membaca `AT_HWCAP` dan MIDR di tablet (Android, tanpa root) | dibangun; **belum dijalankan** di tablet |
 
@@ -35,7 +36,7 @@ Repo ini tidak menduplikasi UniXNU atau UniXNU-pipa. Isinya hanya bagian yang be
 3. Gerbang: `python3 -m tools.isa.audit out.kc --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`. PACGA dan LDRAA berjangkauan jauh boleh tersisa karena FGE menanganinya.
 4. `unixnu build payload` / `bootimg` seperti biasa; `fastboot boot`.
 
-Langkah 2–3 belum terpasang ke `unixnu`. Itu butuh board pipa format 2 (lihat [roadmap.md](roadmap.md)).
+Board pipa format 2 sudah ada (`devices/pipa`, [board-migration.md](board-migration.md)) dan memasang patch null-PAC/FGE di seri device-nya. Build kernel belum dijalankan ([kernel-build.md](kernel-build.md)); `pacstrip` pada kernelcache juga belum terpasang ke langkah prelink `unixnu`.
 
 ## Keputusan desain
 

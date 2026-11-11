@@ -3,7 +3,7 @@
 # docs/evidence/tahoe-26.5; do not edit by hand.
 # Differences from UniXNU's macos-27.3-26C5035r: the kernel source is the release's own (no Darwin 26
 # backports), the identity is Mac mini M1 (J274AP), the oldest CPU Tahoe supports, and the board
-# applies profiles/macos-26.5/patches (null PAC, FGE). See docs/tahoe-26-report.md.
+# (devices/pipa) applies the ARMv8.2 layer in its device series (null PAC, FGE). See docs/tahoe-26-report.md.
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 
 [os]

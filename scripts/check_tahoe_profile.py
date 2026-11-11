@@ -3,10 +3,11 @@
 
     scripts/check_tahoe_profile.py --unixnu UNIXNU --board BOARD_DIR --soc NAME=PATH [--json OUT]
 
-UniXNU-pipa is still a format 1 board, which ignores OS profiles, so a format 2
-board (UniXNU-sheng) hosts the check. The profile is installed into a copy of
-UniXNU, both the 26.5 and 27.3 profiles are resolved, and the result must name
-the 26.5 IPSW, its kernelcache pin, and no Darwin 26 patch.
+A cross-check on an upstream format 2 board (UniXNU-sheng): the profile must
+resolve on a board this repository does not control, too. The pipa board itself
+is checked by scripts/pipa_unixnu.py check. The profile is installed into a copy
+of UniXNU, both the 26.5 and 27.3 profiles are resolved, and the result must
+name the 26.5 IPSW, its kernelcache pin, and no Darwin 26 patch.
 
 SPDX-License-Identifier: BSD-2-Clause-Patent
 """

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased (cabang `board-migration-wip`)
+
+Board pipa format 2. Tahoe belum boot; belum ada kernel yang di-build.
+
+- `devices/pipa`: board UniXNU format 2 dimigrasi dari UniXNU-pipa `cdb3d62` dengan profil default `macos-26.5-25F71` dan override `ipados-17.7.11-21H461`; SoC `UniXNU-sm8250-common a67a9bf`; DTS dari `make-pipa-adt.py`. Pemetaan kunci dan celah: `docs/board-migration.md`.
+- Patch ARMv8.2 (null-PAC, FGE) pindah dari `profiles/macos-26.5/patches` ke seri device; lapisan SoC arm64e di `devices/pipa/patches/xnu-12377/soc`. Rantai 119/119.
+- `scripts/pipa_unixnu.py` / `pipa-unixnu.sh`: menjalankan UniXNU pada board ini dengan sumber `feeds.toml` sebagai `--local-module`. Tanpa itu UniXNU memakai `UniXNU/ArmCpu` dan bukan cabang pipa (celah G1).
+- CI: `pipa_unixnu.py check --adt --xnu` (kedua profil, urutan patch = `check_patch_chain`, 119 patch apply, pin sumber, DTS → ADT dengan nilai board), parse TOML, keberadaan path yang dirujuk board. Cek profil di board UniXNU-sheng tetap sebagai pembanding.
+- Dokumen: `docs/board-migration.md`, `docs/kernel-build.md`; README, kompatibilitas, pengujian, roadmap, laporan Tahoe diperbarui.
+
 ## 0.2.0 (2026-11-11)
 
 Audit Tahoe 26.x. Tahoe belum boot.

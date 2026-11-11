@@ -70,7 +70,7 @@ def main():
              f"# {args.evidence.relative_to(ROOT) if args.evidence.is_absolute() else args.evidence}; do not edit by hand.\n"
              "# Differences from UniXNU's macos-27.3-26C5035r: the kernel source is the release's own (no Darwin 26\n"
              "# backports), the identity is Mac mini M1 (J274AP), the oldest CPU Tahoe supports, and the board\n"
-             "# applies profiles/macos-26.5/patches (null PAC, FGE). See docs/tahoe-26-report.md.\n"
+             "# (devices/pipa) applies the ARMv8.2 layer in its device series (null PAC, FGE). See docs/tahoe-26-report.md.\n"
              "# SPDX-License-Identifier: BSD-2-Clause-Patent\n"]
     os_t = dict(ref["os"])
     os_t.update({"name": name, "darwin": "25.5.0", "xnu_version": XNU_26_5[0], "xnu_revision": XNU_26_5[1],

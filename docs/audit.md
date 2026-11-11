@@ -60,7 +60,7 @@ Bukti macOS di perangkat (record UniXNU-sheng, Xiaomi Pad 6S Pro): macOS 27.3 sa
 
 ## Temuan audit
 
-1. **Pipa belum bisa memakai profil macOS secara konfigurasi.** `board.toml` UniXNU-pipa adalah format 1 (tanpa `schema_version`). `./unixnu status --json --os macos-27 -D UniXNU-pipa` (dijalankan 2026-11-11) tetap mengembalikan IPSW iPad7,1 17.7.11 dan `patch_order: []`: flag `--os` diabaikan. Profil OS butuh board format 2 ([panduan migrasi](https://unixnu.com/porting/migration)). Belum ada repo SoC SM8250 bersama di `feeds.toml`.
+1. **Pipa belum bisa memakai profil macOS secara konfigurasi** (ditangani di repo ini: `devices/pipa` format 2, [board-migration.md](board-migration.md)). `board.toml` UniXNU-pipa adalah format 1 (tanpa `schema_version`). `./unixnu status --json --os macos-27 -D UniXNU-pipa` (dijalankan 2026-11-11) tetap mengembalikan IPSW iPad7,1 17.7.11 dan `patch_order: []`: flag `--os` diabaikan. Profil OS butuh board format 2 ([panduan migrasi](https://unixnu.com/porting/migration)). Belum ada repo SoC SM8250 bersama di `feeds.toml`.
 2. **Profil macOS mensyaratkan PAC; Kryo 585 tidak punya.** Lihat [feasibility.md](feasibility.md).
 3. `[kernel.prelink]` pipa berada di level board, jadi di format 2 ia akan menimpa daftar prelink profil macOS. UniXNU-sheng memindahkannya ke `os_overrides."ipados-..."`; pipa perlu hal yang sama.
 4. Firmware, kernelcache, Turnip, dan firmware GPU/touch diambil dari IPSW Apple atau partisi vendor tablet dan disimpan di luar Git. Itu benar secara lisensi dan harus dipertahankan.

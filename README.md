@@ -6,10 +6,11 @@ Riset dan implementasi untuk menjalankan **macOS asli (XNU + userland Apple)** d
 >
 > - audit biner Tahoe asli (IPSW resmi 26.5 dan sistem 26.7.2 di runner Apple Silicon);
 > - profil UniXNU `macos-26.5-25F71` yang dibuat dari IPSW itu;
-> - rantai patch XNU untuk pipa (118/118 apply);
+> - board pipa dalam format 2 UniXNU (`devices/pipa`) dengan Tahoe 26.5 sebagai profil default; di-resolve oleh `unixnu status` dan dicek CI ([docs/board-migration.md](docs/board-migration.md));
+> - rantai patch XNU untuk pipa (119/119 apply, urutan sama dengan board);
 > - lapisan yang menangani hambatan utama: CPU Pad 6 (ARMv8.2) tidak punya Pointer Authentication, sedangkan seluruh macOS untuk ARM adalah arm64e.
 >
-> Laporan lengkap ada di [docs/tahoe-26-report.md](docs/tahoe-26-report.md); status per fitur di [docs/compatibility.md](docs/compatibility.md).
+> Belum ada kernel macOS yang berhasil di-compile dan di-link untuk pipa; kesiapan build ada di [docs/kernel-build.md](docs/kernel-build.md). Laporan lengkap ada di [docs/tahoe-26-report.md](docs/tahoe-26-report.md); status per fitur di [docs/compatibility.md](docs/compatibility.md).
 
 Ini bukan launcher, tema, simulator, atau skin.
 
@@ -32,7 +33,9 @@ Penjelasan lengkap: [docs/feasibility.md](docs/feasibility.md). Audit proyek ups
 | `tools/isa/pacstrip.py` | Menulis ulang instruksi PAC di kernel collection ke padanan ARMv8.2 yang setara persis, sebelum boot |
 | `tools/isa/audit.py` | Sensus instruksi bermasalah di Mach-O / kernel collection / dyld shared cache; juga gerbang build |
 | `tests/device/cpu_features_probe.c` | Probe read-only untuk tablet (Android, tanpa root) |
-| `profiles/macos-26.5/` | Profil OS UniXNU Tahoe 26.5 (`unixnu/`), seri SoC SM8250, patch null-PAC + FGE untuk pipa |
+| `profiles/macos-26.5/` | Profil OS UniXNU Tahoe 26.5 (`unixnu/macos-26.5-25F71`), dibuat dari bukti IPSW |
+| `devices/pipa/` | Board pipa format 2: `board.toml`, `feeds.toml` (SoC dan driver pipa dipin), `dts/pipa.dts`, defconfig macOS 26.5 dan iPadOS 17, seri patch SoC arm64e dan device (AMP, null-PAC, FGE) |
+| `scripts/pipa-unixnu.sh` | Menjalankan UniXNU pada `devices/pipa` dengan sumber yang dipin; `check` memverifikasi board |
 | `tools/isa/ipsw.py`, `tools/isa/tahoe_audit.py` | Pembaca IPSW resmi via HTTP range, dan audit Tahoe (dijalankan di `.github/workflows/tahoe-audit.yml`) |
 | `docs/evidence/tahoe-26.5/` | Bukti audit: angka, versi, dan hash (tanpa kode Apple) |
 | `third_party/` | UniXNU, UniXNU-pipa, uefi-pipa sebagai submodul yang dipin |
@@ -43,6 +46,10 @@ Penjelasan lengkap: [docs/feasibility.md](docs/feasibility.md). Audit proyek ups
 ```sh
 git clone https://github.com/BxiiDN/macOS-Pad-6 && cd macOS-Pad-6
 scripts/test.sh                     # tes host, cross-build, cek patch (XNU=... opsional)
+
+git submodule update --init --depth 1 third_party/UniXNU
+git -C third_party/UniXNU submodule update --init --depth 1
+scripts/pipa-unixnu.sh check       # board pipa format 2: kedua profil OS, sumber dipin
 ```
 
 Di tablet (aman, hanya membaca):

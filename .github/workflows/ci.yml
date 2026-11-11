@@ -33,6 +33,27 @@ jobs:
         run: python3 -m compileall -q tools tests scripts
       - name: Shell lint
         run: shellcheck scripts/*.sh tests/xnu_shim/check.sh
+      - name: TOML of the board, its feeds and the OS profile parse
+        run: |
+          python3 - <<'EOF'
+          import pathlib, tomllib
+          files = [*pathlib.Path("devices/pipa").glob("*.toml"), *pathlib.Path("profiles").rglob("*.toml")]
+          for f in files:
+              tomllib.loads(f.read_text())
+          print(f"{len(files)} TOML files parse")
+          EOF
+      - name: Paths that devices/pipa/board.toml and its docs name exist
+        run: |
+          for f in scripts/pipa-unixnu.sh scripts/pipa_unixnu.py docs/board-migration.md docs/kernel-build.md \
+                   devices/pipa/configs/pipa_macos26_defconfig devices/pipa/configs/pipa_defconfig devices/pipa/dts/pipa.dts \
+                   devices/pipa/patches/xnu-12377/series devices/pipa/patches/xnu-12377/soc/series devices/pipa/patches/xnu/series; do
+            test -e "$f" || { echo "missing: $f"; exit 1; }
+          done
+          for series in devices/pipa/patches/xnu-12377/series devices/pipa/patches/xnu-12377/soc/series; do
+            grep -v -e '^#' -e '^$' "$series" | while read -r patch; do
+              test -f "$(dirname "$series")/$patch" || { echo "$series names missing $patch"; exit 1; }
+            done
+          done
       - name: Submodule pins match docs/audit.md
         run: |
           for sha in $(git ls-tree -r HEAD third_party | awk '$2=="commit"{print substr($3,1,12)}'); do
@@ -69,7 +90,12 @@ jobs:
           python3 scripts/check_patch_chain.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU \
             --profile tahoe-26.5 --json chain-tahoe-26.5.json
           python3 scripts/gen_tahoe_patches.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU --check
-      - name: Tahoe 26.5 profile is current and resolves in UniXNU (hosted by the format 2 sheng board)
+      - name: devices/pipa (format 2) resolves both OS profiles; its chain applies; its device tree becomes an ADT
+        run: |
+          sudo apt-get install -y -qq device-tree-compiler
+          git -C third_party/UniXNU submodule update --init --depth 1
+          python3 scripts/pipa_unixnu.py check --adt --xnu "$RUNNER_TEMP/xnu" --json pipa-board.json
+      - name: Tahoe 26.5 profile also resolves on an upstream format 2 board (UniXNU-sheng, cross-check)
         run: |
           git clone -q https://github.com/UniXNU/UniXNU-sheng "$RUNNER_TEMP/sheng"
           git -C "$RUNNER_TEMP/sheng" checkout -q f3e60cabad093c7330a1fe39ed478bbe7c821173
@@ -87,3 +113,11 @@ jobs:
         with:
           name: cpu-features-probe
           path: build/device/cpu_features_probe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipa-board-status
+          path: |
+            pipa-board.json
+            chain-tahoe-26.5.json
+          if-no-files-found: ignore
