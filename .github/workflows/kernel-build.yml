@@ -8,7 +8,8 @@
 # "[kernel-build]", "[kernel-prelink]" to also prelink, or "[kernel-repro]" to also build the same source a second
 # time from scratch in the same place and compare the two kernels section by section (a dispatch needs the workflow
 # on the default branch, which main does not have yet). Every build also runs scripts/kernel_size_audit.py on the
-# link map (-Wl,-map in pipa_macos26_defconfig).
+# link map (-Wl,-map in pipa_macos26_defconfig). "[storage-build]" also builds the board's arm64e source storage archive
+# in the same tree and checks it (scripts/pipa_storage_build.py); it is not linked into the kernel.
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 name: Kernel build (pipa, macOS 26.5)
 
@@ -47,7 +48,8 @@ jobs:
   kernel:
     if: >-
       github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]') ||
-      contains(github.event.head_commit.message, '[kernel-prelink]') || contains(github.event.head_commit.message, '[kernel-repro]')
+      contains(github.event.head_commit.message, '[kernel-prelink]') || contains(github.event.head_commit.message, '[kernel-repro]') ||
+      contains(github.event.head_commit.message, '[storage-build]')
     runs-on: macos-26
     timeout-minutes: 360
     steps:
@@ -150,6 +152,14 @@ jobs:
             --json "$WORK/size-audit.json" --markdown "$WORK/size-audit.md" > /dev/null
           cat "$WORK/size-audit.md"
 
+      # G2: pipa's arm64e source storage (PipaUfs + the package's five storage sources, no root, read only), built in
+      # the tree this kernel step left and checked; not linked (the macOS profile does not select it). [storage-build]
+      - name: Source storage archive (built, not linked; patches/unixnu 0001 + 0003)
+        id: storage
+        if: >-
+          steps.kernel.outcome == 'success' && contains(github.event.head_commit.message, '[storage-build]')
+        run: python3 scripts/pipa_storage_build.py --unixnu "$UNIXNU" --json "$WORK/storage-build.json"
+
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
         if: >-
@@ -199,7 +209,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/public"
           cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json \
             "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json \
-            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$RUNNER_TEMP/public/" 2>/dev/null || true
+            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json \
+            "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os
           from pathlib import Path

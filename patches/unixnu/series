@@ -2,3 +2,4 @@
 # scripts/pipa_unixnu.py applies them after copying; each is also an upstream proposal.
 0001-ufs-recipes-board-soc.patch
 0002-catalog-adreno650.patch
+0003-source-storage-no-root.patch

@@ -29,6 +29,12 @@ first_lba = 0x293000
 last_lba = 0x1d387fa
 lba_bytes = 4096
 
+# Storage (G2): pipa mounts no root file system from userdata and writes nothing to UFS. With this the source storage
+# recipe (patches/unixnu/0003) builds the UFS adapter without root policies, and the package's SourceStorage.cpp
+# (PipaStorageGuard.h) refuses every NativeUfs mode that writes userdata or mounts a root from it.
+[storage]
+root = "none"
+
 # The macOS 26.5 kernel: the generic CPU, interrupt, timer and platform expert path of the arm64e profile on this board's
 # cores. Storage, display, input and GPU are not selected yet: no arm64e build of them exists for SM8250 (ShengUfs builds
 # the source storage under arm64e, patches/unixnu/0001 gives it the SM8250 switch; Adreno650 is catalogued for iPadOS 17

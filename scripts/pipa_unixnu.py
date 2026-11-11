@@ -153,6 +153,8 @@ def apply_unixnu_patches(ux, directory=UNIXNU_PATCHES):
     """patches/unixnu/series on the UniXNU copy (or the --in-place checkout): each patch is applied unless it is
     already there (its reverse applies), so preparing twice is harmless. Returns {patch: "applied" | "present"}."""
     done = {}
+    if series_reverses(ux, directory):            # prepared before (an --in-place checkout): leave it as it is
+        return {patch.name: "present" for patch in unixnu_patches(directory)}
     for patch in unixnu_patches(directory):
         check = git_apply(ux, "--check", patch)
         if check.returncode == 0:
@@ -165,6 +167,48 @@ def apply_unixnu_patches(ux, directory=UNIXNU_PATCHES):
             sys.exit(f"{patch.name} does not apply to {ux}:\n{check.stderr[-2000:]}")
         done[patch.name] = "present"
     return done
+
+
+def series_reverses(tree, directory=UNIXNU_PATCHES):
+    """True when the whole series is in TREE: it reverses, last patch first, on a temporary copy of the files it touches."""
+    import re
+    import tempfile
+    patches = unixnu_patches(directory)
+    if not patches:
+        return False
+    rels = sorted({f for p in patches for f in re.findall(r"^\+\+\+ b/(\S+)", p.read_text(), re.M)})
+    with tempfile.TemporaryDirectory() as d:
+        work = Path(d) / "tree"
+        work.mkdir()
+        for rel in rels:
+            if not (Path(tree) / rel).is_file():
+                return False
+            (work / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(Path(tree) / rel, work / rel)
+        return all(git_apply(work, "--reverse", p).returncode == 0 for p in reversed(patches))
+
+
+def series_present(pristine, tree, directory=UNIXNU_PATCHES):
+    """{patch: bool}: whether TREE holds each patch of DIRECTORY's series, judged by applying the whole series to a
+    temporary copy of PRISTINE's files it touches and comparing (patches of one series may touch the same lines, so a
+    reverse check per patch does not work once later ones are applied)."""
+    import re
+    import tempfile
+    patches = unixnu_patches(directory)
+    files = {p: sorted(set(re.findall(r"^\+\+\+ b/(\S+)", p.read_text(), re.M))) for p in patches}
+    with tempfile.TemporaryDirectory() as d:
+        work = Path(d) / "tree"
+        work.mkdir()
+        for rel in {f for fs in files.values() for f in fs}:
+            if (Path(pristine) / rel).is_file():
+                (work / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(Path(pristine) / rel, work / rel)
+        for p in patches:
+            if git_apply(work, p).returncode:
+                return {pt.name: False for pt in patches}
+        return {p.name: all((work / f).is_file() and (Path(tree) / f).is_file() and
+                            (work / f).read_bytes() == (Path(tree) / f).read_bytes() for f in fs)
+                for p, fs in files.items()}
 
 
 def ufs_probe_compatible(native_ufs, defines, cc=None):
@@ -411,7 +455,7 @@ def check(args):
         "modules": {f"{k}:{n}": r for (k, n), r in sorted(rows.items())
                     if k in ("soc", "driver", "kit")},
         # patches/unixnu, as prepare() left them in the copy: reverse-applicable means present.
-        "unixnu_patches": {pt.name: git_apply(ux, "--check", "--reverse", pt).returncode == 0 for pt in unixnu_patches()},
+        "unixnu_patches": series_present(args.unixnu, ux),
         # patches/<feed>: present in the fetched checkout of that feed source.
         "feed_patches": {f"{name}/{pt.name}": git_apply(modules[next(k for k in modules if k[1] == name)], "--check",
                                                         "--reverse", pt).returncode == 0

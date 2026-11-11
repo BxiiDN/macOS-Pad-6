@@ -118,15 +118,40 @@ class Applied(unittest.TestCase):
         self.assertEqual(order[-1], "Adreno650")
         self.assertEqual(set(order[:-1]), {"AdrenoPM4", "AdrenoFirmware", "ArmSmmu4K"})
 
+    def test_storage_recipe_without_root(self):
+        """0003: with UNIXNU_SOURCE_STORAGE_ROOT=none the recipe needs no policy directory and goes on to the header
+        step (which needs the IOStorageFamily checkout and macOS: here it stops there); without it, it refuses."""
+        import os
+        with tempfile.TemporaryDirectory() as t:
+            env = dict(os.environ, UNIXNU_SOC="SM8250", UNIXNU_KIT="pipa", UNIXNU_XNU_ARCH="arm64e",
+                       UNIXNU_IOS_VERSION="26.5", UNIXNU_XNU_TARGET="macosx", UNIXNU_IPSW_BUILD="25F71")
+            cmd = [sys.executable, str(self.ux / "scripts/build-sheng-source-storage.py"), "--tree", t,
+                   "--storage-source", str(Path(t) / "no-IOStorageFamily")]
+            refused = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("no policy directory for 25F71", refused.stderr)
+            env["UNIXNU_SOURCE_STORAGE_ROOT"] = "none"
+            went_on = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            self.assertNotEqual(went_on.returncode, 0)
+            self.assertNotIn("policy", went_on.stderr)
+            self.assertIn("no-IOStorageFamily", went_on.stderr)                 # stopped at headers.prepare
+        text = (self.ux / "scripts/build-sheng-source-storage.py").read_text()
+        self.assertIn("key, manifests = bytes(395), []", text)
+        self.assertIn("tree / 'kits' / os.environ['UNIXNU_KIT']", text)
+
     def test_kernel_step_exports_soc(self):
         kernel = importlib.import_module("unixnu.kernel")
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "profile.toml").write_text('[arch]\nname = "arm64e"\n')
-            ctx = types.SimpleNamespace(schema_version=2, profile_roots={"arch": Path(d)},
-                                        board={"board": {"soc": "SM8250"}, "os": {}, "root": {}, "ipsw": {"build": "25F71"}})
+            board = {"board": {"soc": "SM8250"}, "os": {}, "root": {}, "ipsw": {"build": "25F71"}}
+            ctx = types.SimpleNamespace(schema_version=2, profile_roots={"arch": Path(d)}, board=board)
             env = kernel.version_env({}, ctx)
-        self.assertEqual(env["UNIXNU_SOC"], "SM8250")
-        self.assertEqual(env["UNIXNU_XNU_ARCH"], "arm64e")
+            self.assertEqual((env["UNIXNU_SOC"], env["UNIXNU_SOURCE_STORAGE_ROOT"], env["UNIXNU_KIT"]), ("SM8250", "", ""))
+            self.assertEqual(env["UNIXNU_XNU_ARCH"], "arm64e")
+            board["storage"] = {"root": "none"}
+            board["board"]["kit"] = "pipa"
+            env = kernel.version_env({}, ctx)
+            self.assertEqual((env["UNIXNU_SOURCE_STORAGE_ROOT"], env["UNIXNU_KIT"]), ("none", "pipa"))
 
 
 @unittest.skipUnless(HAVE_CC, "needs a C preprocessor")
