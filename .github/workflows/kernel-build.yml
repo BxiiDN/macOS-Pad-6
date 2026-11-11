@@ -158,7 +158,7 @@ jobs:
         id: storage
         if: >-
           steps.kernel.outcome == 'success' && contains(github.event.head_commit.message, '[storage-build]')
-        run: python3 scripts/pipa_storage_build.py --unixnu "$UNIXNU" --json "$WORK/storage-build.json"
+        run: python3 scripts/pipa_storage_build.py --unixnu "$UNIXNU" --modules "$WORK/modules.json" --json "$WORK/storage-build.json"
 
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink

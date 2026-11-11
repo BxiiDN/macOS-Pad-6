@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build pipa's arm64e source storage (G2) in the resolved tree of a finished kernel step, and check the archive.
 
-    scripts/pipa_storage_build.py --unixnu UNIXNU [--tree TREE] [--json OUT]       (macOS runner, after build kernel)
+    scripts/pipa_storage_build.py --unixnu UNIXNU [--tree TREE] [--modules M] [--json OUT]   (macOS runner, after build kernel)
     scripts/pipa_storage_build.py --plan                                            (any host: print the environment)
 
 The archive is built, not linked: the macOS profile does not select ShengUfs, and CONFIG_XNU_NATIVE_UFS is not set, so
@@ -95,6 +95,41 @@ def iostorage(tree):
     return dest, commit
 
 
+# What the recipe reads besides the package: ShengUfs from the device tree (device / drivers/ShengUfs), the others from
+# the recipe's own root (the directory above the script it runs). The macOS profile selects none of them, so the
+# kernel step's tree may lack them: ShengUfs comes from the feeds.toml pin (pipa_unixnu.py's modules.json), the rest
+# from the UniXNU checkout (its submodules).
+RECIPE_INPUTS = {"drivers/ShengUfs": ("module", "driver:ShengUfs", "NativeUfs.cpp"),
+                 "drivers/RamBlock": ("unixnu", "drivers/RamBlock", "NativeRamBlock.cpp"),
+                 "drivers/VirtioMmioBlock": ("unixnu", "drivers/VirtioMmioBlock", None),
+                 "kits/VerifiedRoot": ("unixnu", "kits/VerifiedRoot", "src/verified_root.c")}
+
+
+def ensure_inputs(tree, unixnu, modules_json):
+    """Link every RECIPE_INPUTS path the recipe will not find into TREE (and into the recipe's root when that is
+    another directory). Returns {path: "present" | source linked}. Exits when a source is missing."""
+    modules = json.loads(Path(modules_json).read_text())["modules"] if modules_json and Path(modules_json).is_file() else {}
+    roots = {Path(tree).resolve(), (Path(tree) / "scripts/build-sheng-source-storage.py").resolve().parents[1]}
+    done = {}
+    for rel, (kind, key, probe) in RECIPE_INPUTS.items():
+        for root in sorted(roots):
+            dest = root / rel
+            if dest.exists() and (probe is None or (dest / probe).is_file()) and any(dest.iterdir()):
+                done.setdefault(rel, "present")
+                continue
+            src = Path(modules[key]) if kind == "module" and key in modules else (Path(unixnu) / key if unixnu else None)
+            if src is None or not src.is_dir() or (probe and not (src / probe).is_file()):
+                sys.exit(f"{rel}: not in {root} and no source for it ({kind} {key})")
+            if dest.is_dir() and not dest.is_symlink() and any(dest.iterdir()):
+                sys.exit(f"{dest}: exists without {probe}; not replaced")
+            if dest.is_symlink() or (dest.is_dir() and not any(dest.iterdir())):
+                dest.unlink() if dest.is_symlink() else dest.rmdir()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(src.resolve(), target_is_directory=True)
+            done[rel] = str(src)
+    return done
+
+
 def check_archive(tree):
     out = tree / "build/sheng-source-storage"
     archive = out / "libShengSourceStorage.a"
@@ -124,6 +159,8 @@ def main():
     ap.add_argument("--unixnu", type=Path)
     ap.add_argument("--tree", type=Path)
     ap.add_argument("--json", type=Path)
+    ap.add_argument("--modules", type=Path, default=Path(os.environ["WORK"]) / "modules.json" if os.environ.get("WORK") else None,
+                    help="pipa_unixnu.py's modules.json (the feeds.toml checkouts); default $WORK/modules.json")
     ap.add_argument("--plan", action="store_true")
     args = ap.parse_args()
     env = board_env()
@@ -135,6 +172,8 @@ def main():
     tree = (args.tree or find_tree(args.unixnu)).resolve()
     storage, commit = iostorage(tree)
     print(f"tree {tree}\nIOStorageFamily {commit} at {storage}")
+    inputs = ensure_inputs(tree, args.unixnu, args.modules)
+    print(f"recipe inputs: {json.dumps(inputs)}")
     full = dict(os.environ, **env)
     full["PATH"] = ":".join(p for p in ("/opt/homebrew/opt/llvm/bin", "/opt/homebrew/opt/lld/bin", full.get("PATH", "")) if p)
     recipe = [sys.executable, tree / "scripts/build-sheng-source-storage.py", "--tree", tree, "--storage-source", storage]
@@ -144,7 +183,7 @@ def main():
     print((p.stdout + p.stderr)[-4000:])
     if p.returncode:
         sys.exit(f"build-sheng-source-storage.py failed ({p.returncode})")
-    result = {"env": env, "iostoragefamily": commit, **check_archive(tree)}
+    result = {"env": env, "iostoragefamily": commit, "inputs": inputs, **check_archive(tree)}
     print(json.dumps({k: v for k, v in result.items() if k != "report"}, indent=2))
     if args.json:
         args.json.write_text(json.dumps(result, indent=2) + "\n")
