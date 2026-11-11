@@ -135,3 +135,52 @@ Compile + link berhasil lagi (SHA-256 `e415f1c0105be18e7f5667dbde38c565afa36363a
 | jumlah | 1.679.523 (`0x19a0a3`), ditambah header Mach-O di awal segmen |
 
 Agar muat di celah 2, `vmsize` `__TEXT` harus turun dari `0x19c000` ke `0x190000` (tiga halaman 16 KiB), jadi isi section harus berkurang sedikitnya sekitar 41 KB ditambah pertumbuhan header. `__cstring` (1,06 MiB) adalah sasaran utama: string diagnostik yang ditambahkan rantai patch (UniXNU dan pipa) dan string build DEVELOPMENT. Belum ada yang dipangkas.
+
+### Percobaan 6 — 2026-11-11, commit `0c4d725`, run [42987653937](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42987653937): audit ukuran dan reproducibility (baseline)
+
+Hanya pengukuran; kode dan data kernel tidak berubah. `pipa_macos26_defconfig` menambahkan link map ld64 (`-Wl,-map`); `scripts/kernel_size_audit.py` memecah setiap section menurut asal (map) dan string menurut patch yang menambahkannya.
+
+Section kernel native (byte):
+
+| Section | Byte | | Section | Byte |
+| --- | ---: | --- | --- | ---: |
+| `__TEXT_EXEC,__text` | 10.441.504 | | `__TEXT,__os_log` | 281.834 |
+| `__TEXT,__cstring` | 1.116.153 | | `__TEXT,__const` | 279.432 |
+| `__DATA_CONST,__const` | 865.812 | | `__DATA_CONST,__assert` | 195.648 |
+| `__DATA,__common` | 817.976 | | `__TEXT_EXEC,__hib_text` | 4.580 |
+| `__BOOTDATA,__init` | 376.472 | | `__TEXT,__eh_frame` | 1.712 |
+| `__LINKINFO,__symbolsets` | 286.554 | | `__TEXT_EXEC,__commpage_text` | 816 |
+
+Tidak ada `__stubs` atau `__auth_stubs`: kernel di-link statis, tidak ada pemanggilan lewat stub.
+
+Asal `__TEXT,__cstring` (33.375 string): XNU Apple 1.092.232 byte; arsip corecrypto (namespaced) 17.727; pthread 2.139; ArmCpu 912; ArmDTPlatform 258; firehose 53. **Seluruh string yang ditambahkan 120 patch hanya sekitar 3 KB**: yang terbesar `vfs-union-below-walk` 315, `offline-component-load-probes` 294, `payload-boot-memory-report` 288; **FGE 119 byte, null-PAC 0**. `__TEXT,__os_log` (5.560 string, 281.834 byte) hampir seluruhnya Apple. Jadi memangkas pesan diagnostik dari patch tidak mungkin menghasilkan 45 KB.
+
+Reproducibility: dua build dari nol dengan source dan lokasi sama berbeda SHA-256. **Satu-satunya section yang berbeda adalah `__TEXT,__const`**, berisi string versi kernel yang dicap `date` oleh `config/newvers.pl` (08:38:43 vs 08:44:40 UTC); `LC_UUID` mengikutinya. Tabel simbol, tabel string, fixup, dan semua section lain identik; 1.038 entri debug map (N_OSO) sudah bertimestamp nol (`ZERO_AR_DATE`). Urutan arsip dan compiler tidak menimbulkan perbedaan.
+
+(Catatan: angka "build-path prefix 0 byte" di run ini salah ukur: prefix dioper dengan jalur `.../macOS-Pad-6/../UniXNU-build/...` yang belum dinormalisasi. Diperbaiki di commit `0cd50a2` (`kernel_size_audit.py` menormalkan prefix).)
+
+### Percobaan 7 — 2026-11-11, commit `d5e04a6`, run [42989038338](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42989038338): prefix map dan tanggal build tetap
+
+- `-fmacro-prefix-map` untuk pohon build dan salinan XNU-nya: `__FILE__` di `VERIFY()` (`bsd/sys/mcache.h`), `AssertMacros.h` IOKit, dan `cc_macros.h` corecrypto sebelumnya memuat ±104 karakter direktori runner.
+- `KERNEL_BUILD_DATE` (override `newvers.pl` untuk build reproducible) dari waktu commit HEAD, lewat `scripts/pipa_unixnu.py`.
+- Hasil: `__TEXT,__cstring` 1.116.153 → **1.090.601** (−25.552 byte, jumlah string sama 33.375), `__text` tetap 10.441.504 byte. `__TEXT` hanya turun satu halaman (`0x19c000` → `0x198000`); prelink gagal lagi, `No room for 0x198000 bytes in __PRELINK_TEXT`.
+- Perhitungan ulang: celah terbesar terpakai `0x1927e0` setelah perataan 16 KiB, jadi `__TEXT` harus `≤ 0x190000`; isinya harus turun sekitar 45 KB dari awal (bukan 38.944 byte seperti tertulis di percobaan 4, yang belum menghitung header Mach-O dan pembulatan halaman).
+
+### Percobaan 8 — 2026-11-11, commit `d51558b`, run [42991705340](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42991705340): teks assert panjang, **`__TEXT` muat**, build reproducible
+
+- Patch device `zzzzb-pipa-long-assert-text.patch`: `assert()` biasa tetap memeriksa, tetap trap, dan deskriptornya tetap menyimpan `__FILE_NAME__` dan `__LINE__`; untuk ekspresi lebih dari 48 byte deskriptor menunjuk satu catatan bersama `(long expression omitted: see file:line)` alih-alih teks ekspresinya. Diuji dengan clang (C dan C++, `-O0`, `-Os`, `-O2`): instruksi identik, literal panjang tidak dihasilkan. `release_assert`, `assertf`, `assert3u/3s/3p` tidak berubah. Rantai 121/121.
+- Hasil:
+
+| | Awal (percobaan 6) | Percobaan 8 | Selisih |
+| --- | ---: | ---: | ---: |
+| `__TEXT` vmsize | `0x19c000` | **`0x188000`** | −80 KiB (5 halaman) |
+| `__TEXT,__cstring` | 1.116.153 | 1.033.274 | **−82.879** |
+| `__TEXT,__os_log` | 281.834 | 281.834 | 0 |
+| `__TEXT,__const` | 279.432 | 279.432 | 0 |
+| `__TEXT_EXEC,__text` | 10.441.504 | 10.441.504 | 0 |
+| Ukuran file kernel | 25.135.384 | 25.048.600 | −86.784 |
+
+- `scripts/prelink_layout.py`: `__TEXT` native `0x188000` **muat** di celah setelah `AppleARMWatchdogTimer` (`0x1927e0`), **sisa 42.976 byte**.
+- Integrasi tetap: `sleh_synchronous` memanggil `fge_xnu_handle` (1 call site), `ml_addrperm_pacga` diawali badan null-PAC (`orr x0, x0, #1; ret`), sensus ISA sama (57.243 word PAuth, 0 di luar FGE).
+- **Reproducibility**: build kedua dari nol di tempat yang sama menghasilkan kernel identik bit demi bit: SHA-256 `7db1659a583282e1835af9b5ef47aa918eb05996e04ee2234352887781768e00` dan `LC_UUID` sama, tidak ada section atau blob link-edit yang berbeda.
+- Prelink berhenti pada penyebab berikutnya: **`Chained fixup imports are not supported`** (`kc_image.py`). Penyebabnya patch `zzzz` saya sendiri: `native_exit_trace` didefinisikan `weak`, dan definisi weak di executable Mach-O di-bind lewat weak lookup, yang ditulis linker sebagai import chained fixup (lib ordinal −3; direproduksi dengan lld: weak → 1 import, strong → 0). Diperbaiki di commit `50736cd`: definisi biasa (strong).
