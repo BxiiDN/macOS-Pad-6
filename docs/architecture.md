@@ -25,7 +25,7 @@ Repo ini tidak menduplikasi UniXNU atau UniXNU-pipa. Isinya hanya bagian yang be
 | `tools/isa/audit.py` | Python | Sensus instruksi yang butuh fitur yang tidak dimiliki SM8250, di Mach-O, fat, MH_FILESET, dyld shared cache | tes dengan Mach-O hasil llvm-mc |
 | `tools/isa/pacstrip.py` | Python | Penulisan ulang statis PAC → ARMv8.2 yang setara | tes kesetaraan via decode LLVM |
 | `profiles/macos-26.5/` | TOML | Profil OS UniXNU Tahoe 26.5 (dibuat `scripts/make_tahoe_profile.py` dari bukti IPSW) | `unixnu status` |
-| `devices/pipa/` | TOML + DTS + patch | Board pipa format 2: profil default 26.5, lapisan SoC arm64e, patch `zzyf-pipa-amp`, `null-pac-armv82`, `fge-armv82` | `scripts/pipa_unixnu.py check`, rantai 120/120 `git apply` |
+| `devices/pipa/` | TOML + DTS + patch | Board pipa format 2: profil default 26.5, lapisan SoC arm64e, patch `zzyf-pipa-amp`, `null-pac-armv82`, `fge-armv82`, `zzzz-pipa-macos-absent-features`, `zzzzb-pipa-long-assert-text` | `scripts/pipa_unixnu.py check`, rantai 121/121 `git apply` |
 | `tools/isa/ipsw.py`, `inspect_macho.py`, `tahoe_audit.py`, `scan.c` | Python + C | Baca IPSW resmi via HTTP range; dyld cache multi-file; sensus per image | tes host; dijalankan pada biner asli di `tahoe-audit.yml` |
 | `tests/device/cpu_features_probe.c` | C (freestanding) | Membaca `AT_HWCAP` dan MIDR di tablet (Android, tanpa root) | dibangun; **belum dijalankan** di tablet |
 

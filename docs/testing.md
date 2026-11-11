@@ -17,7 +17,7 @@ Butuh: Python ≥ 3.11, clang dengan target AArch64, `llvm-mc`, `ld.lld`. Encodi
 | `tests/isa/test_scan.py` | Scanner C (`scan.c`) = aturan Python, `rules.h` sesuai `features.py` | — |
 | `tests/isa/test_inspect.py`, `test_ipsw.py` | Chained fixups, fileset, simbol, dyld cache multi-file + atribusi per image; ZIP64/CRC/IM4P/ADT | IPSW asli (dikerjakan di workflow `tahoe-audit.yml`) |
 | `tests/xnu_shim/glue_host_test.c` | Glue XNU di host: register, jalur atomic, saklar `fge=` | Build XNU sebenarnya |
-| `scripts/check_patch_chain.py --profile tahoe-26.5` | Rantai patch pipa Tahoe 26.5 apply 120/120 | Build kernel |
+| `scripts/check_patch_chain.py --profile tahoe-26.5` | Rantai patch pipa Tahoe 26.5 apply 121/121 | Build kernel |
 | `scripts/pipa_unixnu.py check --adt --xnu XNU` | `devices/pipa` di-resolve UniXNU untuk 26.5 dan iPadOS 17; urutan patch board = rantai di atas dan apply; SoC/ArmCpu dari pin `feeds.toml`; DTS → ADT dengan nilai `board.toml` | Build kernel, payload |
 | `scripts/check_tahoe_profile.py` | Profil 26.5 juga di-resolve di board UniXNU-sheng (pembanding) | Build payload |
 | `build/device/cpu_features_probe` | Dibangun sebagai ELF static-PIE AArch64 tanpa relokasi | Hasil di tablet (belum dijalankan) |

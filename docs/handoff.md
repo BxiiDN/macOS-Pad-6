@@ -14,7 +14,7 @@ macOS Tahoe **26.5 (25F71)**, XNU **12377.121.6** (`ac9718fb1af6`), Xiaomi Pad 6
 | --- | --- | --- |
 | Audit Tahoe 26.x, profil `macos-26.5-25F71` | selesai | `docs/tahoe-26-report.md`, `docs/evidence/tahoe-26.5/` |
 | Board pipa UniXNU format 2 (`devices/pipa`) | selesai, di-resolve, dicek CI | `docs/board-migration.md`, artefak CI `pipa-board-status` |
-| Rantai patch | 120/120 apply ke xnu-12377.121.6 dalam urutan board | `scripts/check_patch_chain.py`, `pipa_unixnu.py check --xnu` |
+| Rantai patch | 121/121 apply ke xnu-12377.121.6 dalam urutan board | `scripts/check_patch_chain.py`, `pipa_unixnu.py check --xnu` |
 | Compile + link kernel native (arm64e) | **berhasil** (percobaan 2) | `docs/kernel-build.md`, run 42980033161 |
 | Prelink dengan kernelcache 26.5 | **gagal** (percobaan 3, 4): `__TEXT` native 0x19c000 tidak muat; celah terbesar di `__PRELINK_TEXT` kurang 38.944 byte | `docs/kernel-build.md` percobaan 4 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |

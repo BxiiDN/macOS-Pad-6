@@ -26,7 +26,7 @@ scripts/pipa-unixnu.sh status --os macos-26.5-25F71            # tampilan unixnu
 Yang diperiksa dan harus benar:
 
 1. Profil default `macos-26.5-25F71`: IPSW 26.5 (25F71), pin kernelcache sama dengan `profile.toml`, defconfig `pipa_macos26_defconfig`, nol patch Darwin 26.
-2. Urutan patch yang dipakai board (**120 patch**) sama persis dengan rantai `scripts/check_patch_chain.py --profile tahoe-26.5`, dan dengan `--xnu` ke-120 patch itu apply ke xnu-12377.121.6.
+2. Urutan patch yang dipakai board (**121 patch**) sama persis dengan rantai `scripts/check_patch_chain.py --profile tahoe-26.5`, dan dengan `--xnu` ke-121 patch itu apply ke xnu-12377.121.6.
 3. Override `ipados-17.7.11-21H461` masih ter-resolve (IPSW 17.7.11, 61 patch, 17 komponen).
 4. SoC `sm8250` dan setiap komponen terpilih yang dipin `feeds.toml` benar-benar berasal dari pin itu (lihat G1).
 5. Dengan `--adt`: `dts/pipa.dts` dikompilasi `dtc` dengan `sm8250.dtsi` dari feed SoC, lalu generator ADT UniXNU (`unixnu.devicetree.generate`, jalur yang sama dengan `build payload`) menghasilkan ADT yang nilainya cocok dengan `board.toml`: dram-base `0x80000000`, dram-size `0x980000000`, darwinboot-memory-size `0x170000000`, chip-id `0x8103`, `kernel-ctrr-to-be-enabled = 0`, `vmm-present = 1`, `sleep-disabled = 1`, delapan CPU (MPIDR `0x000..0x700`, empat Cortex-A55 klaster E lalu empat Cortex-A77 klaster P, timebase 19,2 MHz), `intc` = `arm,gic-v3`.
