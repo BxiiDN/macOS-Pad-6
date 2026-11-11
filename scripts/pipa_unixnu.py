@@ -146,11 +146,35 @@ def unixnu_args(modules):
     return args
 
 
+BUILD_COMMANDS = ("build", "kernel", "prelink", "payload", "package", "release")
+
+
+def reproducible_env(env=None):
+    """Environment for a reproducible kernel step. XNU's config/newvers.pl stamps `date` into the kernel version
+    string unless KERNEL_BUILD_DATE is set; it is set here from SOURCE_DATE_EPOCH, or else from the commit time of
+    this repository's HEAD, so two builds of the same commit carry the same string. ZERO_AR_DATE (archive member
+    and debug-map times) is set by UniXNU's kernel step already; it is repeated for the archive builders."""
+    import time
+    env = dict(os.environ if env is None else env)
+    epoch = env.get("SOURCE_DATE_EPOCH")
+    if not epoch:
+        epoch = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%ct"],
+                               capture_output=True, text=True).stdout.strip() or "0"
+        env["SOURCE_DATE_EPOCH"] = epoch
+    env.setdefault("KERNEL_BUILD_DATE", time.strftime("%a %b %d %H:%M:%S UTC %Y", time.gmtime(int(epoch))))
+    env.setdefault("ZERO_AR_DATE", "1")
+    return env
+
+
 def run(work, command):
     ux, modules = load_state(work)
     if not command:
         sys.exit("run: give a unixnu command after --")
-    p = subprocess.run(["./unixnu", *command, *unixnu_args(modules)], cwd=ux)
+    env = reproducible_env() if command[0] in BUILD_COMMANDS else None
+    if env:
+        print(f"pipa_unixnu: KERNEL_BUILD_DATE={env['KERNEL_BUILD_DATE']} (SOURCE_DATE_EPOCH={env['SOURCE_DATE_EPOCH']})",
+              file=sys.stderr)
+    p = subprocess.run(["./unixnu", *command, *unixnu_args(modules)], cwd=ux, env=env)
     sys.exit(p.returncode)
 
 

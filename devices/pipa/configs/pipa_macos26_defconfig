@@ -23,6 +23,14 @@ CONFIG_XNU_DT_PANIC_REGION=y
 # UniXNU-sheng's macOS kernel.
 CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
 CONFIG_XNU_ARMVIRT_PLATFORM=n
+# __FILE__ without the build directory. VERIFY() (bsd/sys/mcache.h), IOKit's AssertMacros.h and corecrypto's
+# cc_macros.h put __FILE__ into panic and assertion messages; the compiler expands it to the absolute source path,
+# here about a hundred characters of runner directories before "bsd/...". With the maps it is the path inside the
+# tree ("bsd/net/dlil.c", "refer/corecrypto-2023/..."). Only those message strings change: no code, no condition and
+# no symbol does. It shortens __TEXT,__cstring (the kernel's __TEXT has to fit the 26.5 collection's __PRELINK_TEXT,
+# docs/kernel-build.md) and makes the kernel independent of where it is built. The first seven flags are
+# build-xnu-4k-baseline.sh's default XNU_EXTRA_CFLAGS, which this setting replaces, unchanged.
+CONFIG_XNU_EXTRA_CFLAGS="-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -fmacro-prefix-map={tree}/.cache/xnu-work/= -fmacro-prefix-map={tree}/="
 # The kernel link also writes ld64's link map (which object put each atom where), for scripts/kernel_size_audit.py.
 # It is an extra output file only; the linked kernel does not change.
 CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-map,{tree}/build/kernel-link.map"
