@@ -30,6 +30,16 @@ class Env(unittest.TestCase):
         self.assertTrue(env["UNIXNU_SOC"])
 
 
+class Errors(unittest.TestCase):
+    def test_compile_errors(self):
+        log = "a.cpp:1:2: warning: w\n  x\nb.cpp:3:4: error: no member named 'y'\n  3 | z.y\n    |   ^\nclang: error: no input files\n"
+        out = sb.compile_errors(log, context=2)
+        self.assertEqual(out[0], "ERROR b.cpp:3:4: error: no member named 'y'")
+        self.assertEqual(out[1:3], ["  3 | z.y", "    |   ^"])
+        self.assertIn("ERROR clang: error: no input files", out)
+        self.assertNotIn("warning", " ".join(out))
+
+
 class Inputs(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

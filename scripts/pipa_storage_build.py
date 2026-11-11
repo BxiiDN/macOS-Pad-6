@@ -130,6 +130,18 @@ def ensure_inputs(tree, unixnu, modules_json):
     return done
 
 
+def compile_errors(log, context=3, limit=60):
+    """The compiler's `error:` lines of LOG, each with the CONTEXT lines after it (the source line and caret)."""
+    lines = log.splitlines()
+    out = []
+    for i, line in enumerate(lines):
+        if re.search(r"\berror:", line):
+            out += ["ERROR " + line] + lines[i + 1:i + 1 + context]
+        if len(out) >= limit * (context + 1):
+            break
+    return out
+
+
 def check_archive(tree):
     out = tree / "build/sheng-source-storage"
     archive = out / "libShengSourceStorage.a"
@@ -182,6 +194,9 @@ def main():
     (tree / "build/sheng-source-storage/pipa-recipe.log").write_text(p.stdout + p.stderr)
     print((p.stdout + p.stderr)[-4000:])
     if p.returncode:
+        # The tail is mostly warnings; the job log is the only place the errors can be read (artifacts are not), so
+        # every error line with the source line after it goes to stdout as well.
+        print("\n".join(compile_errors(p.stdout + p.stderr)))
         sys.exit(f"build-sheng-source-storage.py failed ({p.returncode})")
     result = {"env": env, "iostoragefamily": commit, "inputs": inputs, **check_archive(tree)}
     print(json.dumps({k: v for k, v in result.items() if k != "report"}, indent=2))
