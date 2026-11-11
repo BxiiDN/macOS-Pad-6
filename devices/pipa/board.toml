@@ -114,9 +114,14 @@ kernel_args = [
 [payload.adt]
 # T8103, the chip of Macmini9,1 (the OS profile's identity). A software identity seed, not an Apple silicon ID.
 chip_id = "8103"
-# 5.75 GiB of the second bank, the window UniXNU-pipa's kernel ran with (2026-10-24); the 4 KiB bootstrap tables map at
-# most 6 GiB.
-owned_memory_size = "0x170000000"
+# G6. The window is 6 GiB, the most the 4 KiB bootstrap tables map. DarwinBoot lists the ranges of it the kernel must not
+# use (memory the firmware keeps, gaps between banks) in a table of this many ranges, and this kernel leaves them out
+# (window-memory-excluded-ranges.patch, in the board's chain): the window no longer needs one free run, only a free head.
+# As UniXNU-sheng's macOS profile. scripts/pipa_memory.py runs DarwinBoot's MemoryWindow.h on a model of pipa's map: the
+# window lands at 0xc0000000 (bank 1) with nothing excluded, and survives firmware holes the single-run rule does not.
+# iPadOS 17 keeps the 5.75 GiB single run UniXNU-pipa's kernel ran with (2026-10-24): its kernel does not read the table.
+owned_memory_size = "0x180000000"
+owned_memory_excluded_ranges = 64
 packed_data_ramdisk = true
 unique_chip_id = "required"          # the platform seed is not stored in any repository
 
@@ -153,7 +158,8 @@ unixnu = "../../third_party/UniXNU"
 # the Adreno 650 driver, which no catalog component provides yet). docs/board-migration.md lists each gap.
 # ---------------------------------------------------------------------------------------------------------------------
 [os_overrides."ipados-17.7.11-21H461"]
-remove = ["adt.defaults.u32.vmm-present"]
+# vmm-present is the macOS profile's; the excluded-range table is read only by the macOS kernel's chain (payload.adt).
+remove = ["adt.defaults.u32.vmm-present", "payload.adt.owned_memory_excluded_ranges"]
 
 [os_overrides."ipados-17.7.11-21H461".components]
 include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "ShengUfs", "VirtioMmioBlock", "RamBlock", "GopFramebuffer", "ShengHidInput", "ShengNovatekTouch", "QcomGeniSpi", "AppleKeyStoreState", "ArmSmmu4K", "AdrenoFirmware", "AdrenoPM4", "XnuPrelink", "DarwinBoot", "VerifiedRoot"]

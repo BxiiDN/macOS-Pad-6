@@ -41,6 +41,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BOARD = ROOT / "devices/pipa"
 PROFILE = ROOT / "profiles/macos-26.5/unixnu/macos-26.5-25F71"
+UNIXNU_PATCHES = ROOT / "patches/unixnu"
 DEFAULT_OS = "macos-26.5-25F71"
 OVERRIDE_OS = "ipados-17.7.11-21H461"
 DEFAULT_WORK = ROOT / "build/pipa-unixnu"
@@ -115,6 +116,7 @@ def prepare(unixnu, work, in_place=False):
         for name in ("out", ".cache"):
             if (work / f".keep-{name}").exists():
                 shutil.move(str(work / f".keep-{name}"), str(ux / name))
+    apply_unixnu_patches(ux)
     target = ux / "profiles/os" / PROFILE.name
     if target.exists():
         shutil.rmtree(target)
@@ -126,6 +128,61 @@ def prepare(unixnu, work, in_place=False):
         {"unixnu": str(ux), "source": str(unixnu),
          "modules": {f"{k}:{n}": str(p) for (k, n), p in modules.items()}}, indent=2) + "\n")
     return ux, modules
+
+
+def unixnu_patches():
+    series = UNIXNU_PATCHES / "series"
+    if not series.is_file():
+        return []
+    return [UNIXNU_PATCHES / line.strip() for line in series.read_text().splitlines()
+            if line.strip() and not line.startswith("#")]
+
+
+def git_apply(ux, *args):
+    """git apply in UX as a tree of its own: the copy sits inside this repository, where git apply would resolve
+    paths against this repository's top level and skip every file (exit 0, nothing changed)."""
+    env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(Path(ux).resolve().parent))
+    return subprocess.run(["git", "apply", *map(str, args)], cwd=ux, env=env, capture_output=True, text=True)
+
+
+def apply_unixnu_patches(ux):
+    """patches/unixnu/series on the UniXNU copy (or the --in-place checkout): each patch is applied unless it is
+    already there (its reverse applies), so preparing twice is harmless. Returns {patch: "applied" | "present"}."""
+    done = {}
+    for patch in unixnu_patches():
+        check = git_apply(ux, "--check", patch)
+        if check.returncode == 0:
+            if git_apply(ux, patch).returncode:
+                sys.exit(f"{patch.name}: git apply failed in {ux}")
+            done[patch.name] = "applied"
+            continue
+        back = git_apply(ux, "--check", "--reverse", patch)
+        if back.returncode != 0:
+            sys.exit(f"{patch.name} does not apply to {ux}:\n{check.stderr[-2000:]}")
+        done[patch.name] = "present"
+    return done
+
+
+def ufs_probe_compatible(native_ufs, defines, cc=None):
+    """The controller compatible string NativeUfs.cpp's probe() looks for under these -D flags: the #if block that
+    defines `compatible`, cut out of the source and run through the C preprocessor."""
+    import re
+    import tempfile
+    text = Path(native_ufs).read_text()
+    blocks = [m for m in re.finditer(r"^[ \t]*#if defined\(NATIVE_UFS_[^\n]*\n(?:[^\n]*\n)*?[ \t]*#endif[^\n]*\n", text, re.M)
+              if "const char *compatible" in m.group(0)]
+    if len(blocks) != 1:
+        raise LookupError(f"{native_ufs}: {len(blocks)} NATIVE_UFS_<SoC> blocks define the compatible string, expected 1")
+    m = blocks[0]
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / "probe.c"
+        src.write_text(m.group(0))
+        out = subprocess.run([cc or os.environ.get("CC") or "cc", "-E", "-P", *defines, str(src)],
+                             capture_output=True, text=True, check=True).stdout
+    found = re.findall(r'const char \*compatible = "([^"]+)"', out)
+    if len(found) != 1:
+        raise LookupError(f"{native_ufs}: the preprocessed block gives {found}")
+    return found[0]
 
 
 def load_state(work):
@@ -149,7 +206,7 @@ def unixnu_args(modules):
 BUILD_COMMANDS = ("build", "kernel", "prelink", "payload", "package", "release")
 # What the kernel is built from in this repository. The pinned build date is the time of the last commit that changed
 # one of these, so a commit that only touches documentation, CI or tooling builds the same kernel bit for bit.
-KERNEL_INPUTS = ("devices/pipa", "profiles", "kernel", "third_party", ".gitmodules")
+KERNEL_INPUTS = ("devices/pipa", "profiles", "kernel", "third_party", ".gitmodules", "patches")
 
 
 def reproducible_env(env=None):
@@ -257,10 +314,21 @@ def check_adt(ux, modules):
         from unixnu.config import Context
         from unixnu.devicetree import compile_hardware, generate
         ctx = Context(parser().parse_args(["status", "--os", DEFAULT_OS, *unixnu_args(modules)]))
-        dtb = compile_hardware(ctx)
+        dtb = Path(compile_hardware(ctx)).resolve()
         adt = generate(dtb, ctx.board, unique_chip_id="0123456789abcdef")
     finally:
         os.chdir(cwd)
+    # G2: the controller NativeUfs.cpp's probe() looks for, with the define the (patched) UFS recipes derive from
+    # [board] soc, must be one the hardware tree's enabled UFS host carries.
+    sys.path.insert(0, str(ROOT))
+    from tools.hw.fdt import Tree
+    import ufs_soc
+    tree = Tree.load(dtb)
+    ufs_compat = sorted({c for n in tree.nodes if tree.effectively_enabled(n)
+                         for c in n.strings("compatible") if c.endswith("-ufshc")})
+    soc = tomllib.loads((BOARD / "board.toml").read_text())["board"]["soc"]
+    ufs_defines = ufs_soc.defines(soc)
+    probe = ufs_probe_compatible(Path(modules[("driver", "ShengUfs")]) / "NativeUfs.cpp", ufs_defines)
     nodes = parse_adt(adt)
     board = tomllib.loads((BOARD / "board.toml").read_text())
     pay = board["payload"]
@@ -278,6 +346,8 @@ def check_adt(ux, modules):
         "dram-base": u64("/device-tree/chosen", "dram-base"),
         "dram-size": u64("/device-tree/chosen", "dram-size"),
         "darwinboot-memory-size": u64("/device-tree/chosen", "darwinboot-memory-size"),
+        # The excluded-range table DarwinBoot fills (G6): its capacity in (base, size) pairs, 0 when absent.
+        "darwinboot-memory-excluded": len(nodes.get("/device-tree/chosen", {}).get("darwinboot-memory-excluded", b"")) // 16,
         "chip-id": u32("/device-tree/chosen", "chip-id"),
         "kernel-ctrr-to-be-enabled": u32("/device-tree/chosen", "kernel-ctrr-to-be-enabled"),
         "vmm-present": u32("/device-tree/defaults", "vmm-present"),
@@ -286,11 +356,14 @@ def check_adt(ux, modules):
                  for p in cpus],
         "intc": nodes.get("/device-tree/arm-io/intc", {}).get("compatible", b"").split(bytes(1))[0].decode(),
         "root_compatible": nodes["/device-tree"]["compatible"].split(bytes(1))[0].decode(),
+        "ufs": {"defines": ufs_defines, "probe_compatible": probe, "dts_compatible": ufs_compat,
+                "matches": probe in ufs_compat},
     }
     want = {
         "dram-base": 0x80000000,
         "dram-size": int(pay["dram_size"], 0),
         "darwinboot-memory-size": int(pay["adt"]["owned_memory_size"], 0),
+        "darwinboot-memory-excluded": int(pay["adt"].get("owned_memory_excluded_ranges") or 0),
         "chip-id": int(pay["adt"]["chip_id"], 16),
         "kernel-ctrr-to-be-enabled": 0,
         "vmm-present": 1,
@@ -298,6 +371,8 @@ def check_adt(ux, modules):
         # Four Cortex-A55 (E) then four Cortex-A77 (P), MPIDR 0x000..0x700 (Affinity1), the 19.2 MHz generic timer.
         "cpus": [("E", i << 8, 19200000) for i in range(4)] + [("P", i << 8, 19200000) for i in range(4, 8)],
         "intc": "arm,gic-v3",
+        "ufs": {"defines": ["-DNATIVE_UFS_SM8250=1"], "probe_compatible": "qcom,sm8250-ufshc",
+                "dts_compatible": ["qcom,sm8250-ufshc"], "matches": True},
     }
     wrong = {k: {"adt": found[k], "expected": v} for k, v in want.items() if found[k] != v}
     return {"dtb_bytes": Path(dtb).stat().st_size, "adt_bytes": len(adt), "nodes": len(nodes),
@@ -331,11 +406,16 @@ def check(args):
         "components": sorted(c["id"] for c in new["components"]),
         "modules": {f"{k}:{n}": r for (k, n), r in sorted(rows.items())
                     if k in ("soc", "driver", "kit")},
+        # patches/unixnu, as prepare() left them in the copy: reverse-applicable means present.
+        "unixnu_patches": {pt.name: git_apply(ux, "--check", "--reverse", pt).returncode == 0 for pt in unixnu_patches()},
         "override": {
             "profile": Path(old["profiles"].get("os", "")).name,
             "ipsw": [old["board"]["ipsw"]["version"], old["board"]["ipsw"]["build"]],
             "patches": len(old["patch_order"]),
             "components": sorted(c["id"] for c in old["components"]),
+            # The iPadOS 17 kernel does not read the excluded-range table, so its payload must not carry one.
+            "owned_memory": {k: old["board"].get("payload", {}).get("adt", {}).get(k)
+                             for k in ("owned_memory_size", "owned_memory_excluded_ranges")},
         },
     }
     if res["profile"] != DEFAULT_OS:
@@ -353,6 +433,10 @@ def check(args):
         errors.append(f"patch order differs from check_patch_chain ({len(order)} vs {len(expected)}): {diff}")
     if res["override"]["profile"] != OVERRIDE_OS or res["override"]["ipsw"] != ["17.7.11", "21H461"]:
         errors.append(f"override resolved as {res['override']}")
+    if not all(res["unixnu_patches"].values()):
+        errors.append(f"UniXNU patches not in the copy: {res['unixnu_patches']}")
+    if res["override"]["owned_memory"]["owned_memory_excluded_ranges"]:
+        errors.append("the iPadOS override carries owned_memory_excluded_ranges, which its kernel does not read")
     # Every pinned source the default profile selects must come from its pin, not UniXNU's checkout.
     for key, commit in feeds.items():
         row = rows.get(key)

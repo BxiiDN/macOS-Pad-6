@@ -1,0 +1,104 @@
+UniXNU 3fd6a3c: pass the board's SoC to the UFS recipes (NATIVE_UFS_<SoC>), gap G2 of macOS-Pad-6
+
+The arm64e source-storage recipe (build-sheng-source-storage.py, which build-arm-driver.py ShengUfs runs under
+arm64e) and the arm64 driver build compile NativeUfs.cpp without any SoC switch, so a SoC fork of ShengUfs (PipaUfs
+for SM8250, selected by NATIVE_UFS_SM8250) is built as the SM8550 driver: its probe() looks for
+"qcom,sm8550-ufshc" and never matches the board's controller. Format 1 passed the switch by hand
+(build-arm-driver.py PipaUfs --sm8250).
+
+The kernel step now exports UNIXNU_SOC from board.toml [board] soc, and both recipes add the define that
+scripts/ufs_soc.py derives from it: none for SM8550 (sheng, unchanged), -DNATIVE_UFS_SM8250=1 / _SM6225=1 for the
+SoCs the driver has a block for, an error for any other SoC instead of a silent SM8550 build.
+
+Applied by macOS-Pad-6's scripts/pipa_unixnu.py to its UniXNU copy (patches/unixnu/series), and meant as the
+upstream proposal. Tested on the host only (tests/test_unixnu_patches.py); no kernel or driver was built with it.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+---
+diff --git a/scripts/build-arm-driver.py b/scripts/build-arm-driver.py
+index b027a9b..1defa52 100644
+--- a/scripts/build-arm-driver.py
++++ b/scripts/build-arm-driver.py
+@@ -8,6 +8,8 @@ import subprocess
+ import sys
+ 
+ from kernel_target import ARCH, TRIPLE, check_object
++import os
++import ufs_soc
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ parser = argparse.ArgumentParser(description=__doc__)
+@@ -96,6 +98,7 @@ if component in ('NativeVirtioBlock', 'NativeRamBlock', 'NativeUfs'):
+ if component == 'NativeUfs':
+     command += ['-I', str(ROOT / 'kits/VerifiedRoot/include'), '-I', str(ROOT / 'drivers/VirtioMmioBlock'),
+                 '-DNATIVE_VERIFIED_BLOCK=1', '-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1', '-mgeneral-regs-only']
++    command += ufs_soc.defines(os.environ.get('UNIXNU_SOC'))
+ if component=='NativeOfflineGPU':
+     command += ['-I',str(ROOT/'drivers/VirtioMmioConsole')]
+ if component in ('NativeLegacyDisplay','NativeHidInput'):
+diff --git a/scripts/build-sheng-source-storage.py b/scripts/build-sheng-source-storage.py
+index f7fef50..095a29e 100644
+--- a/scripts/build-sheng-source-storage.py
++++ b/scripts/build-sheng-source-storage.py
+@@ -15,6 +15,7 @@ from pathlib import Path
+ import shutil
+ import struct
+ import subprocess
++import ufs_soc
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ 
+@@ -189,6 +190,8 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
+                 '-I', str(ROOT / 'drivers/VirtioMmioBlock'), '-I', str(tree / '.cache/xnu-work/osfmk')]
+     flags = ['-DNATIVE_UFS_SOURCE_API=1', '-DNATIVE_VERIFIED_BLOCK=1',
+              '-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1', '-DNATIVE_VERIFIED_POLICY_HANDOFF=1']
++    # NativeUfs.cpp selects its controller (compatible string, GCC and SMMU layout) by NATIVE_UFS_<SoC>.
++    flags += ufs_soc.defines(os.environ.get('UNIXNU_SOC'))
+     if os.environ.get('UNIXNU_XNU_TARGET') == 'macosx':
+         # The kernel keeps the iOS target triple, so TargetConditionals gives TARGET_OS_OSX 0. The macOS
+         # IOStorageFamily has the TARGET_OS_OSX members (doLockUnlockMedia, reportLockability,
+diff --git a/scripts/ufs_soc.py b/scripts/ufs_soc.py
+new file mode 100644
+index 0000000..b9e8c52
+--- /dev/null
++++ b/scripts/ufs_soc.py
+@@ -0,0 +1,26 @@
++"""The NATIVE_UFS_<SoC> switch of the UFS host driver (drivers/ShengUfs and its SoC forks) for the board's SoC.
++
++NativeUfs.cpp and GccUfs.h choose the controller's compatible string and the GCC, UFS and SMMU layout by
++NATIVE_UFS_SM6225 or NATIVE_UFS_SM8250; with neither they are the SM8550 (sheng) driver. Both UFS recipes (the
++arm64 driver build and the arm64e source storage) take the SoC from UNIXNU_SOC, which the kernel step exports
++from board.toml [board] soc.
++"""
++import re
++
++# SoCs whose UFS host has its own block in the driver sources. SM8550 is the default and needs no switch.
++SWITCHED = ('SM6225', 'SM8250')
++DEFAULT = 'SM8550'
++
++
++def defines(soc):
++    """Compiler flags for the SoC: [] for SM8550 or no SoC, one -D for a switched SoC. Another SoC is an error:
++    the driver would otherwise probe for the SM8550 controller and silently match nothing."""
++    name = (soc or '').strip().upper()
++    if not name or name == DEFAULT:
++        return []
++    if not re.fullmatch(r'[A-Z]{2}[0-9]{4}[A-Z]?', name):
++        raise SystemExit(f'UNIXNU_SOC={soc!r}: not a SoC name')
++    if name not in SWITCHED:
++        raise SystemExit(f'UNIXNU_SOC={soc}: the UFS driver has no NATIVE_UFS_{name} block (known: '
++                         f'{", ".join((DEFAULT,) + SWITCHED)})')
++    return [f'-DNATIVE_UFS_{name}=1']
+diff --git a/scripts/unixnu/kernel.py b/scripts/unixnu/kernel.py
+index 9924ddb..4e89ee5 100644
+--- a/scripts/unixnu/kernel.py
++++ b/scripts/unixnu/kernel.py
+@@ -71,6 +71,8 @@ def version_env(modules, ctx=None):
+         if root.get('app_volume_uuid'):
+             env['UNIXNU_ROOT_APP_UUID'] = root['app_volume_uuid']
+         env['UNIXNU_IPSW_BUILD'] = ctx.board.get('ipsw', {}).get('build', '')
++        # The board's SoC ([board] soc), for recipes whose sources differ per SoC (scripts/ufs_soc.py).
++        env['UNIXNU_SOC'] = str(ctx.board.get('board', {}).get('soc', ''))
+         env['UNIXNU_XNU_ARCH'] = load_toml(ctx.profile_roots['arch'] / 'profile.toml').get('arch', {}).get('name', 'arm64')
+     return env
+ 

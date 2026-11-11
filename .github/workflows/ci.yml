@@ -70,6 +70,8 @@ jobs:
           sudo apt-get install -y -qq clang lld llvm
           clang --version | head -1
           llvm-mc --version | head -2
+      - name: UniXNU submodule (DarwinBoot's MemoryWindow.h for tests/hw/test_pipa_memory.py)
+        run: git submodule update --init --depth 1 third_party/UniXNU
       - name: Fetch XNU at the pinned revision (patch check only)
         run: |
           git init -q "$RUNNER_TEMP/xnu"
@@ -104,6 +106,10 @@ jobs:
           python3 scripts/pipa_hw.py inventory --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --linux "$RUNNER_TEMP/linux" \
             --markdown docs/evidence/hardware/pipa-mainline-inventory.md --check
           python3 scripts/pipa_hw.py drivers --linux "$RUNNER_TEMP/linux" --json pipa-hw-drivers.json
+      - name: Adreno 650 fork's device-tree parser on the pipa GPU and GMU nodes (G3)
+        run: python3 scripts/test_adreno650.py --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --json adreno650-pipa.json
+      - name: G6 memory window, DarwinBoot's MemoryWindow.h on the pipa memory map model
+        run: python3 scripts/pipa_memory.py --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --json pipa-memory.json --check
       - name: pipa panel, touch and backlight facts agree with Xiaomi's Android device tree source (pipa-t-oss)
         run: |
           python3 scripts/pipa_hw.py fetch-vendor --vendor "$RUNNER_TEMP/micode-dt"
@@ -136,6 +142,8 @@ jobs:
             pipa-hw-check.json
             pipa-hw-drivers.json
             pipa-hw-vendor.json
+            pipa-memory.json
+            adreno650-pipa.json
           if-no-files-found: ignore
 
   # The host tests of the board package (devices/pipa/package), on x86 and on arm64. A650GmuTests links
@@ -151,4 +159,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Board package host tests
         run: scripts/test_board_package.sh
+      - name: Adreno 650 driver fork, its host tests (G3)
+        run: |
+          git submodule update --init --depth 1 third_party/UniXNU
+          python3 scripts/test_adreno650.py --json "adreno650-host-$(uname -m).json"
 
