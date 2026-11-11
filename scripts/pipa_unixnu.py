@@ -196,11 +196,22 @@ def series_present(pristine, tree, directory=UNIXNU_PATCHES):
     import tempfile
     patches = unixnu_patches(directory)
     files = {p: sorted(set(re.findall(r"^\+\+\+ b/(\S+)", p.read_text(), re.M))) for p in patches}
+    # --in-place: the checkout is both, and already patched. Its pristine files are the committed ones (git show
+    # HEAD:path); without Git history, a series that reverses as a whole is present.
+    same = Path(pristine).resolve() == Path(tree).resolve()
+    if same and not (Path(tree) / ".git").exists():
+        whole = series_reverses(tree, directory)
+        return {p.name: whole for p in patches}
     with tempfile.TemporaryDirectory() as d:
         work = Path(d) / "tree"
         work.mkdir()
         for rel in {f for fs in files.values() for f in fs}:
-            if (Path(pristine) / rel).is_file():
+            if same:
+                shown = subprocess.run(["git", "-C", str(tree), "show", f"HEAD:{rel}"], capture_output=True)
+                if shown.returncode == 0:
+                    (work / rel).parent.mkdir(parents=True, exist_ok=True)
+                    (work / rel).write_bytes(shown.stdout)
+            elif (Path(pristine) / rel).is_file():
                 (work / rel).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(Path(pristine) / rel, work / rel)
         for p in patches:

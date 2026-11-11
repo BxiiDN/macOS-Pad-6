@@ -78,6 +78,27 @@ class Applied(unittest.TestCase):
         self.assertEqual(set(self.second.values()), {"present"})
         self.assertTrue((self.ux / "scripts/ufs_soc.py").is_file())
 
+    def test_series_present_copy_and_in_place(self):
+        # A copy: judged against the pristine submodule.
+        self.assertEqual(set(pu.series_present(UNIXNU, self.ux).values()), {True})
+        # --in-place (the kernel workflow): the checkout is pristine and tree at once, already patched. Its committed
+        # files are the pristine ones. Regression: kernel-build 43100104425 reported every patch missing.
+        with tempfile.TemporaryDirectory() as t:
+            ck = Path(t) / "UniXNU"
+            shutil.copytree(UNIXNU / "scripts", ck / "scripts")
+            shutil.copy(UNIXNU / "components.toml", ck / "components.toml")
+            env = dict(__import__("os").environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                       GIT_COMMITTER_EMAIL="t@t")
+            subprocess.run(["git", "init", "-q", str(ck)], check=True)
+            subprocess.run(["git", "-C", str(ck), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(ck), "commit", "-qm", "pin"], check=True, env=env)
+            self.assertEqual(set(pu.series_present(ck, ck).values()), {False})      # not prepared yet
+            pu.apply_unixnu_patches(ck)
+            self.assertEqual(set(pu.series_present(ck, ck).values()), {True})
+            # Without history: the whole series reversing is the evidence.
+            shutil.rmtree(ck / ".git")
+            self.assertEqual(set(pu.series_present(ck, ck).values()), {True})
+
     def test_defines(self):
         d = self.ufs_soc.defines
         self.assertEqual(d("SM8250"), ["-DNATIVE_UFS_SM8250=1"])
