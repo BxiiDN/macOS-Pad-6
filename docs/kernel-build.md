@@ -30,7 +30,7 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | `__TEXT` native muat di `__PRELINK_TEXT` 26.5 | **ya**: `0x188000` (awal `0x19c000`), sisa 42.976 byte | percobaan 8 |
 | Tanpa import chained fixup | **ya** (0 import) | percobaan 9 |
 | Prelink dengan kernelcache 26.5 | **berhasil** di percobaan 9 (percobaan 3–8 gagal: tata letak, lalu import) | lihat riwayat |
-| Build bit-for-bit reproducible (kernel native) | **ya** sejak `KERNEL_BUILD_DATE` dipin (dua build dari nol identik) | percobaan 8, 9 |
+| Build bit-for-bit reproducible | **ya**: kernel native dan kernel collection identik antar-build dan antar-commit dengan input kernel yang sama | percobaan 8, 9, 12 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Boot di tablet | belum | |
 
@@ -232,6 +232,22 @@ Jadi pemetaan statisnya lengkap (setiap referensi kext ke kernel terpasang ke si
 - Build kedua dari nol di run yang sama: identik (SHA-256, `LC_UUID`, semua section, link-edit, string versi).
 - Tetapi tanggal versi adalah 09:52:50 UTC (waktu `984c8f5` sendiri), bukan 09:18:20 (`50736cd`, commit input kernel terakhir). Penyebab: `actions/checkout` mengambil 1 commit; di clone dangkal commit itu tampak mengubah setiap path, jadi `git log -1 -- <input>` mengembalikan HEAD. Diperbaiki: `fetch-depth: 0` di `kernel-build.yml`, dan `pipa_unixnu.py` memberi peringatan bila clone dangkal.
 
-### Percobaan 12 — verifikasi reproducibility antar-commit
+### Percobaan 12 — 2026-11-11, commit `4250b45`, run [43011657003](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43011657003): **reproducible antar-commit**
 
-Tidak ada input kernel yang berubah sejak `50736cd`, dan tanggalnya kini 09:18:20 UTC seperti percobaan 9. Harapan yang bisa diperiksa: kernel native sama persis dengan percobaan 9 (`ce13aea1…`); bila prelink juga deterministik, kernel collection sama dengan percobaan 9 (`840488d5…`). Hasil: lihat di bawah setelah run selesai.
+Tidak ada input kernel yang berubah sejak `50736cd`; dengan checkout penuh tanggal build menjadi 09:18:20 UTC, sama dengan percobaan 9 (tanpa peringatan clone dangkal). Hasilnya, dari commit lain dan sekitar empat jam kemudian:
+
+| | Percobaan 9 (`50736cd`) | Percobaan 12 (`4250b45`) |
+| --- | --- | --- |
+| Kernel native (SHA-256) | `ce13aea1586d2e425b10f48170d884f2b0f4af1348ab32ae459f3074e7e5ddec` | **sama** |
+| Kernel collection hasil prelink (SHA-256) | `840488d5d4b6ea38df85bbe210b24e170bbe012f28c47ff53936697a5dc66e3c` | **sama** |
+
+- Build kedua dari nol di run yang sama: identik juga (SHA-256, `LC_UUID`, semua section, link-edit, string versi).
+- Prelink deterministik: input yang sama menghasilkan kernel collection yang sama bit demi bit. Catatan XnuPrelink lagi-lagi `missing` {}, `stubbed` {}, `mapping_complete` true, input native = `ce13aea1…`.
+- FGE dan null-PAC tetap terverifikasi di kode mesin; 0 import chained fixup; tata letak muat dengan sisa 42.976 byte.
+
+Sumber ketidak-reproducible-an yang diaudit:
+- **Timestamp**: string versi dari `newvers.pl`. Satu-satunya sumber; kini dipin.
+- **Debug map (N_OSO)**: sudah nol karena `ZERO_AR_DATE`.
+- **Build path**: tidak lagi di `__cstring` karena prefix map, dan tidak ada di string versi (`runner:ios-obj/...`).
+- **Urutan arsip dan nondeterminisme compiler**: tidak ditemukan; tidak ada section lain yang berbeda.
+- **Metadata build**: `LC_UUID` diturunkan dari isi, jadi ikut sama.
