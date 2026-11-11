@@ -171,8 +171,12 @@ jobs:
           kc=$(find "$UNIXNU/out" -path '*/kernel/kernel.macho' -type f | head -n 1)
           echo "kernel collection: $kc"
           python3 scripts/kernel_report.py --file "$kc" --json "$WORK/prelink-report.json"
-          ls "$(dirname "$kc")"
-          for f in "$(dirname "$kc")"/*.json; do echo "== $f"; head -c 3000 "$f"; echo; done
+          ls -l "$(dirname "$kc")"
+          # XnuPrelink's record of the join (inputs, closure, missing and stubbed targets, checks): every key, with long
+          # lists and tables shortened to their size. The symbol pairing (kernel.map.json) is summarized by count.
+          cp "$(dirname "$kc")/kernel.json" "$WORK/prelink-record.json"
+          python3 scripts/prelink_record.py "$(dirname "$kc")/kernel.json" "$(dirname "$kc")/kernel.map.json" \
+            --json "$WORK/prelink-record-summary.json"
 
       - name: Reproducibility (same source, same place, second build from scratch)
         id: repro
@@ -191,7 +195,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/public"
           cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json \
-            "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json "$RUNNER_TEMP/public/" 2>/dev/null || true
+            "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json \
+            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os
           from pathlib import Path
