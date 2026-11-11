@@ -2,6 +2,7 @@
 """Describe a native XNU kernel that "unixnu build kernel" produced, without publishing it.
 
     scripts/kernel_report.py --work UNIXNU_OUT_DIR [--json OUT]
+    scripts/kernel_report.py --file KERNEL_MACHO [--json OUT]       e.g. the prelinked kernel collection
 
 Finds mach.development.bcm2837 (the linked native kernel) under the build output and reports
 its size, SHA-256, Mach-O header (file type, CPU type and subtype: arm64e or not), segments,
@@ -62,13 +63,20 @@ def symbols(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--work", type=Path, required=True, help="where to look (UniXNU's out/ or the build tree)")
+    ap.add_argument("--work", type=Path, help="where to look (UniXNU's out/ or the build tree)")
+    ap.add_argument("--file", type=Path, help="report on this file (e.g. the prelinked kernel.macho) instead of searching")
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
-    found = [p for name in NAMES for p in sorted(args.work.rglob(name)) if p.is_file()]
+    if args.file:
+        found = [args.file.resolve()] if args.file.is_file() else []
+        args.work = args.file.resolve().parent
+    elif args.work:
+        found = [p for name in NAMES for p in sorted(args.work.rglob(name)) if p.is_file()]
+    else:
+        ap.error("give --work or --file")
     if not found:
         print(json.dumps({"kernel": None, "searched": str(args.work)}, indent=2))
-        sys.exit("no linked native kernel (mach.development.bcm2837*) under " + str(args.work))
+        sys.exit(f"no kernel: {args.file or 'mach.development.bcm2837* under ' + str(args.work)}")
     kernel = found[0]
     data = kernel.read_bytes()
     report = {

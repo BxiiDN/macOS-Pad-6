@@ -5,7 +5,8 @@
 # Apple input stay on the runner and are removed at the end. Nothing here touches a device.
 #
 # Runs on workflow_dispatch, and on a push to board-migration-wip whose head commit message contains
-# "[kernel-build]" (a dispatch needs the workflow on the default branch, which main does not have yet).
+# "[kernel-build]", or "[kernel-prelink]" to also prelink (a dispatch needs the workflow on the default branch,
+# which main does not have yet).
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 name: Kernel build (pipa, macOS 26.5)
 
@@ -42,7 +43,9 @@ defaults:
 
 jobs:
   kernel:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]')
+    if: >-
+      github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]') ||
+      contains(github.event.head_commit.message, '[kernel-prelink]')
     runs-on: macos-26
     timeout-minutes: 360
     steps:
@@ -122,16 +125,28 @@ jobs:
 
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
-        if: inputs.prelink && steps.kernel.outcome == 'success'
+        if: >-
+          steps.kernel.outcome == 'success' &&
+          (inputs.prelink || contains(github.event.head_commit.message, '[kernel-prelink]'))
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- build prelink
+
+      - name: Report on the prelinked kernel collection
+        id: prelink_report
+        if: always() && steps.prelink.outcome == 'success'
+        run: |
+          kc=$(find "$UNIXNU/out" -path '*/kernel/kernel.macho' -type f | head -n 1)
+          echo "kernel collection: $kc"
+          python3 scripts/kernel_report.py --file "$kc" --json "$WORK/prelink-report.json"
+          ls "$(dirname "$kc")"
+          for f in "$(dirname "$kc")"/*.json; do echo "== $f"; head -c 3000 "$f"; echo; done
 
       - name: Collect the text logs
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/public"
-          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$RUNNER_TEMP/public/" 2>/dev/null || true
+          cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os
           from pathlib import Path
@@ -163,6 +178,7 @@ jobs:
           KERNEL: ${{ steps.kernel.outcome }}
           REPORT: ${{ steps.report.outcome }}
           PRELINK: ${{ steps.prelink.outcome }}
+          PRELINK_REPORT: ${{ steps.prelink_report.outcome }}
         run: |
           {
             echo "## pipa kernel step (macOS 26.5, xnu-12377.121.6)"
@@ -172,6 +188,7 @@ jobs:
             echo "| compile + link native kernel | ${KERNEL:-skipped} |"
             echo "| linked kernel found and inspected | ${REPORT:-skipped} |"
             echo "| prelink with the 26.5 kernelcache | ${PRELINK:-skipped} |"
+            echo "| kernel collection inspected | ${PRELINK_REPORT:-skipped} |"
             echo
             if [ -f "$WORK/kernel-report.json" ]; then echo '```json'; head -c 4000 "$WORK/kernel-report.json"; echo; echo '```'; fi
           } >> "$GITHUB_STEP_SUMMARY"

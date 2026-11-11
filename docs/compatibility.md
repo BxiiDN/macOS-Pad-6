@@ -9,16 +9,16 @@ Diperbarui: 2026-11-11 (setelah audit Tahoe 26.x, lihat [tahoe-26-report.md](tah
 | Area | Status | Bukti / alasan |
 | --- | --- | --- |
 | Board pipa format 2 (`devices/pipa`) | EXPERIMENTAL | di-resolve `unixnu status` untuk 26.5 dan iPadOS 17, ADT dihasilkan dari DTS (CI); belum di-build ([board-migration.md](board-migration.md)) |
-| Boot macOS Tahoe di pipa | NOT IMPLEMENTED | belum ada kernel yang di-build ([kernel-build.md](kernel-build.md)) |
+| Boot macOS Tahoe di pipa | NOT IMPLEMENTED | kernel native sudah ter-link, tetapi belum di-prelink, belum ada payload, belum dijalankan ([kernel-build.md](kernel-build.md)) |
 | Profil UniXNU `macos-26.5-25F71` | EXPERIMENTAL | nilai dari IPSW resmi; di-resolve oleh `unixnu status` (135 patch, nol patch Darwin 26); belum di-build |
 | Rantai patch XNU Tahoe 26.5 untuk pipa | WORKING (apply) | 120/120 apply di xnu-12377.121.6 dalam urutan board (CI); belum di-build |
-| Mode null-PAC (`HAS_NULL_PAC`) | EXPERIMENTAL | patch apply; belum di-build |
+| Mode null-PAC (`HAS_NULL_PAC`) | EXPERIMENTAL | ter-compile di kernel pipa; belum di-boot |
 | pacstrip pada kernelcache Tahoe 26.5 asli | WORKING (host) | 778.340 instruksi PAC ditulis ulang, sisa 42 PACGA (bukti tahoe-26.5) |
 | Emulasi SHA3/SHA512 (FGE) | WORKING (host) | model Python + oracle QEMU |
 | Emulasi FCMA, FHM, FRINTTS | NOT IMPLEMENTED | FCMA/FHM ada di libBLAS, libSparseBLAS, libBNNS, libsystem_m (1×) |
-| Kernel XNU target macOS untuk pipa | NOT IMPLEMENTED | belum di-build |
+| Kernel XNU target macOS untuk pipa | EXPERIMENTAL (build) | xnu-12377.121.6 + 120 patch, arm64e `MH_EXECUTE` compile + link berhasil di runner macOS (2026-11-11, SHA-256 `8f725741…`); FGE ter-link; belum prelink/boot |
 | Emulasi PAuth/JSCVT/FlagM/SB/LRCPC2/DIT (FGE), logika | WORKING (host) | `tests/fge`, termasuk 40.000 vektor acak FJCVTZS vs model rasional, fuzz decoder vs LLVM |
-| FGE di dalam XNU | EXPERIMENTAL | patch apply bersih, glue lolos compile-check dengan shim; belum di-build atau di-boot |
+| FGE di dalam XNU | EXPERIMENTAL | ter-compile dan ter-link di kernel pipa (simbol `_fge_xnu_handle` dll.); belum di-boot |
 | Penulisan ulang PAC statis (pacstrip) | WORKING (host) | kesetaraan setiap rewrite dicek via decode LLVM; data-in-code tidak disentuh |
 | Sensus ISA dyld shared cache Tahoe | WORKING (data) | 26.7.2 di runner macos-26; 26,9 juta PAC non-hint |
 | Userland macOS (launchd → WindowServer) | NOT IMPLEMENTED | masalah terbuka (feasibility.md §4) |

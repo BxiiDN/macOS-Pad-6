@@ -1,6 +1,6 @@
 # Build kernel macOS Tahoe 26.5 untuk pipa
 
-Status: **belum ada kernel yang berhasil dibangun.** Halaman ini mencatat apa yang dimaksud "kernel step", apa yang sudah siap, dan hasil setiap percobaan build. Klaim "kernel berhasil dibuat" hanya ditulis bila kompilasi dan linking XNU selesai dan biner Mach-O-nya diperiksa.
+Status: **kernel native XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) berhasil di-compile dan di-link** di runner macOS (percobaan 2, 2026-11-11). Belum di-prelink dengan kext kernelcache 26.5, belum dilewatkan `pacstrip`, belum di-boot. Klaim di halaman ini hanya yang ada buktinya di log run yang ditautkan.
 
 ## Apa yang dibangun
 
@@ -23,10 +23,13 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Device tree → ADT dengan nilai board | siap | `check --adt` |
 | ArmCpu cabang pipa dari pin `feeds.toml` | siap (resolusi) | G1 di board-migration.md |
 | Toolchain kernel step (macos-26, Xcode 26.6, SDK iphoneos 26.5) | siap | percobaan 1 |
-| Kompilasi XNU arm64e dengan 119 patch percobaan 1 | **berhasil** (semua objek; link gagal) | percobaan 1 |
+| Kompilasi XNU arm64e dengan rantai board | **berhasil** | percobaan 1 (119 patch), percobaan 2 (120 patch) |
 | Arsip: corecrypto ×2, ArmDTPlatform, ArmCpu cabang pipa, libpthread | **berhasil dibangun** terhadap header xnu-12377 | percobaan 1 |
-| Linking kernel native | **gagal** di percobaan 1 (5 simbol); perbaikan di percobaan 2 | lihat riwayat |
-| Prelink dengan kernelcache 26.5 | belum (butuh kernelcache dari IPSW resmi, tidak disimpan di repo) | |
+| Linking kernel native | **berhasil** di percobaan 2 (percobaan 1 gagal pada 5 simbol) | lihat riwayat |
+| Lapisan ARMv8.2 ter-link | **ya**: `_fge_xnu_init`, `_fge_xnu_handle`, `_fge_emulate` ada di tabel simbol | percobaan 2 |
+| Prelink dengan kernelcache 26.5 | belum (percobaan 3: `[kernel-prelink]`) | |
+| `pacstrip` + gerbang ISA pada kernel collection | belum | |
+| Boot di tablet | belum | |
 
 ## Toolchain
 
@@ -64,3 +67,23 @@ Di GitHub Actions: `.github/workflows/kernel-build.yml` (runner `macos-26`, Xcod
 - Tidak ada kernel yang ter-link. Laporan kernel: tidak ada biner.
 
 Perbaikan (commit berikutnya): `pipa_macos26_defconfig` memilih `CONFIG_XNU_CRYPTO_BOOTSTRAP="source"`; patch device baru `zzzz-pipa-macos-absent-features.patch` memberi default "fitur tidak ada": tidak ada root owner yang diterima (open terautentikasi tetap `EAUTH`, seperti XNU asli) dan `native_exit_trace` weak no-op. Rantai menjadi 120/120.
+
+### Percobaan 2 — 2026-11-11, commit `699cbbe`, run [42980033161](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42980033161): **compile dan link berhasil**
+
+- Rantai 120 patch, `CONFIG_XNU_CRYPTO_BOOTSTRAP="source"`. Runner, Xcode, SDK sama dengan percobaan 1.
+- Pass bootstrap gagal link seperti dirancang (arsip corecrypto belum ada; `_source_corecrypto14_bootstrap` dari `prng_random.o`). Kelima arsip lalu dibangun, dan pass penuh me-link kernel tanpa error. UniXNU menulis `kernel/kernel.macho` (mode `native-only`, `--skip-prelink`).
+- Kernel (`scripts/kernel_report.py`, kernel tetap di runner dan dihapus di akhir job):
+
+| | |
+| --- | --- |
+| File | `tree/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf` |
+| Ukuran | 25.135.384 byte |
+| SHA-256 | `8f7257419dfbfe0e998862a15edd5d56f669b26e588a13ca872efd43512c9688` |
+| Mach-O | `MH_EXECUTE`, CPU arm64, subtype **arm64e** (caps `0xc0`), 27 load command |
+| Segmen | `__TEXT` @ `0xfffffff007004000`, `__TEXT_EXEC` 10,0 MiB, `__DATA`, `__BOOTDATA`, segmen `__PRELINK_*` kosong (belum di-prelink), `__LINKEDIT` |
+| Simbol FGE | `_fge_xnu_init`, `_fge_xnu_handle`, `_fge_emulate`: ada |
+| Sensus ISA (`tools/isa/audit`, statis) | 2.611.725 word kode; 57.243 butuh PAuth (`pac-branch` 33.119, `pac-dp1` 24.113, `pacga` 7, `pac-keyreg` 4); semuanya di kelas yang ditangani FGE, **0 di luar FGE** |
+
+Arti angka sensus: kernel arm64e ini masih berisi instruksi PAC non-hint yang akan trap di Cortex-A77/A55. FGE mengemulasikannya (null PAC), tetapi setiap trap mahal; langkah yang direncanakan adalah `tools/isa/pacstrip` pada kernel collection hasil prelink, lalu gerbang `audit --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`. Sensus ini statis (hitungan word di section kode), bukan bukti eksekusi.
+
+Yang **tidak** dibuktikan percobaan 2: kernel belum digabung dengan kext Tahoe 26.5 (prelink), belum di-`pacstrip`, belum dimasukkan ke payload, dan belum dijalankan di perangkat atau emulator.
