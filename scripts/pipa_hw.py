@@ -5,6 +5,9 @@
     scripts/pipa_hw.py compile --linux DIR --out pipa.dtb        cpp + dtc -@ of sm8250-xiaomi-pipa.dts
     scripts/pipa_hw.py check   --dtb pipa.dtb [--soc DIR] [--json OUT]
     scripts/pipa_hw.py inventory --dtb pipa.dtb --linux DIR [--markdown OUT] [--check]
+    scripts/pipa_hw.py drivers --linux DIR [--json OUT]
+    scripts/pipa_hw.py fetch-vendor --vendor DIR                 sparse clone of MiCode kernel_devicetree at VENDOR_COMMIT
+    scripts/pipa_hw.py vendor  --vendor DIR [--json OUT]
 
 check: every hardware constant the board code uses (devices/pipa/package/*.h and *.c/*.cpp, read from the
 source each time), devices/pipa/board.toml and devices/pipa/dts/pipa.dts (with --soc, the UniXNU-sm8250-common
@@ -15,6 +18,16 @@ evidence either way.
 inventory: the enabled hardware of the mainline tree by subsystem, with physical addresses, GIC interrupt
 numbers, clocks and power domains decoded through the dt-bindings headers, supplies, SMMU streams and firmware
 names. --check compares the output with the committed file.
+
+drivers: the register offsets, bit fields, command encodings and SCL tables of package/GeniI2cCore.h and the KTZ8866
+register map of package/BacklightBoard.h, compared with the Linux driver sources at the same commit (geni-se.h,
+qcom-geni-se.c, i2c-qcom-geni.c, ktz8866.c). Agreement says the constants are the ones Linux uses; it is not a
+hardware test.
+
+vendor: what mainline does not describe (the DSI panel, the Novatek touch controller on SPI, the vendor view of the
+backlight) checked against Xiaomi's published Android device tree source (MiCode/kernel_devicetree, branch
+pipa-t-oss, VENDOR_COMMIT), read with tools/hw/dts_source.py: package/PanelBoard.h, TouchBoard.h and
+BacklightBoard.h. A vendor tree is the board as Android configures it; agreement is static evidence only.
 
 The mainline tree is a public description of the hardware. Agreement with it is static evidence about addresses
 and wiring, not proof that a driver works on the tablet.
@@ -34,13 +47,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tools.hw.fdt import Tree  # noqa: E402
+from tools.hw.dts_source import Source  # noqa: E402
 
 LINUX_GIT = "https://github.com/torvalds/linux"
 LINUX_COMMIT = "067c5c24cef23d913b67eaaf71ae67e7169a6620"     # 2026-11-10, mainline
 LINUX_DTS = "arch/arm64/boot/dts/qcom/sm8250-xiaomi-pipa.dts"
+LINUX_DRIVERS = {"geni-se.h": "include/linux/soc/qcom/geni-se.h", "qcom-geni-se.c": "drivers/soc/qcom/qcom-geni-se.c",
+                 "i2c-qcom-geni.c": "drivers/i2c/busses/i2c-qcom-geni.c", "i2c.h": "include/linux/i2c.h",
+                 "ktz8866.c": "drivers/video/backlight/ktz8866.c"}
 SPARSE = ["/arch/arm64/boot/dts/qcom/sm8250*", "/arch/arm64/boot/dts/qcom/pm8150*", "/include/dt-bindings/",
-          "/include/uapi/linux/input-event-codes.h"]
+          "/include/uapi/linux/input-event-codes.h"] + ["/" + p for p in LINUX_DRIVERS.values()]
 PKG = ROOT / "devices/pipa/package"
+VENDOR_GIT = "https://github.com/MiCode/kernel_devicetree"
+VENDOR_BRANCH = "pipa-t-oss"
+VENDOR_COMMIT = "623dd5bf821eaa865dc7296b33f0a1368218c77d"
+VENDOR_FILES = ["qcom/kona-qupv3.dtsi", "qcom/kona-sde-display.dtsi", "qcom/dsi-panel-m82-36-02-0a-video.dtsi",
+                "qcom/dsi-panel-m82-42-02-0b-video.dtsi", "qcom/pipa-pinctrl.dtsi", "qcom/pipa-sm8250.dtsi"]
+VENDOR_PANELS = {"PNL_ID_TM": "dsi_m82_36_02_0a_dual_dphy_video", "PNL_ID_CSOT": "dsi_m82_42_02_0b_dual_dphy_video"}
 BINDINGS = {   # provider compatible -> dt-bindings header of its cell values
     "qcom,gcc-sm8250": ["clock/qcom,gcc-sm8250.h"],
     "qcom,sm8250-gpucc": ["clock/qcom,gpucc-sm8250.h"],
@@ -64,6 +87,10 @@ def run(cmd, **kw):
 def fetch(dest):
     dest = Path(dest)
     if (dest / ".git").exists() and run(["git", "-C", dest, "rev-parse", "HEAD"]).strip() == LINUX_COMMIT:
+        sparse = dest / ".git/info/sparse-checkout"
+        if sparse.read_text() != "\n".join(SPARSE) + "\n":      # a checkout from before SPARSE grew
+            sparse.write_text("\n".join(SPARSE) + "\n")
+            run(["git", "-C", dest, "read-tree", "-mu", "HEAD"])
         return dest
     if dest.exists():
         shutil.rmtree(dest)
@@ -72,6 +99,21 @@ def fetch(dest):
     run(["git", "-C", dest, "config", "core.sparseCheckout", "true"])
     (dest / ".git/info/sparse-checkout").write_text("\n".join(SPARSE) + "\n")
     run(["git", "-C", dest, "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", LINUX_COMMIT])
+    run(["git", "-c", "advice.detachedHead=false", "-C", dest, "checkout", "-q", "FETCH_HEAD"])
+    return dest
+
+
+def fetch_vendor(dest):
+    dest = Path(dest)
+    if (dest / ".git").exists() and run(["git", "-C", dest, "rev-parse", "HEAD"]).strip() == VENDOR_COMMIT:
+        return dest
+    if dest.exists():
+        shutil.rmtree(dest)
+    run(["git", "init", "-q", dest])
+    run(["git", "-C", dest, "remote", "add", "origin", VENDOR_GIT])
+    run(["git", "-C", dest, "config", "core.sparseCheckout", "true"])
+    (dest / ".git/info/sparse-checkout").write_text("\n".join("/" + f for f in VENDOR_FILES) + "\n")
+    run(["git", "-C", dest, "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", VENDOR_COMMIT])
     run(["git", "-c", "advice.detachedHead=false", "-C", dest, "checkout", "-q", "FETCH_HEAD"])
     return dest
 
@@ -417,6 +459,338 @@ def fmt(v):
     return str(v)
 
 
+# Driver constants against the Linux driver sources ------------------------------------------------------------------
+
+def c_defines(text):
+    """{name: expression} of the object-like #defines of a C source, continuation lines joined."""
+    text = re.sub(r"\\\n", " ", text)
+    out = {}
+    for m in re.finditer(r"^\s*#\s*define\s+([A-Za-z_]\w*)(?!\()[ \t]+(.*?)\s*(?://.*|/\*.*)?$", text, re.M):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def c_eval(expr, defs, depth=0):
+    """The value of a #define expression made of integers, BIT(), GENMASK(), names of other defines and | & ~ << >> + -."""
+    if depth > 16:
+        raise ValueError(f"recursive define: {expr}")
+    e = re.sub(r"\bBIT\(([^()]+)\)", r"(1 << (\1))", expr)
+    e = re.sub(r"\bGENMASK\(([^(),]+),([^(),]+)\)", r"(((1 << ((\1) + 1)) - 1) & ~((1 << (\2)) - 1))", e)
+    e = re.sub(r"\b(0[xX][0-9a-fA-F]+|\d+)(?:[uU][lL]{0,2}|[lL]{1,2}[uU]?)\b", r"\1", e)
+    e = re.sub(r"\b[A-Za-z_]\w*\b", lambda m: f"({c_eval(defs[m.group(0)], defs, depth + 1)})"
+               if m.group(0) in defs else m.group(0), e)
+    if re.search(r"\b[A-Za-z_]\w*", e) or not re.fullmatch(r"[0-9a-fA-FxX()\s|&~<>+\-]*", e):
+        raise ValueError(f"not an integer expression: {expr}")
+    return eval(e, {"__builtins__": {}})  # noqa: S307 - digits and operators only, checked above
+
+
+def c_enum_index(text, enum, member):
+    m = re.search(rf"enum\s+{re.escape(enum)}\s*\{{([^}}]*)\}}", text)
+    if not m:
+        raise KeyError(f"no enum {enum}")
+    value = -1
+    for item in re.sub(r"/\*.*?\*/|//[^\n]*", "", m.group(1), flags=re.S).split(","):
+        if not item.strip():
+            continue
+        name, _, explicit = item.partition("=")
+        value = c_eval(explicit, {}) if explicit.strip() else value + 1
+        if name.strip() == member:
+            return value
+    raise KeyError(f"enum {enum} has no {member}")
+
+
+def linux_scl_tables(texts, defs):
+    out = []
+    for hz, name in ((19200000, "geni_i2c_clk_map_19p2mhz"), (32000000, "geni_i2c_clk_map_32mhz")):
+        m = re.search(rf"{name}\[\]\s*=\s*\{{(.*?)\n\}};", texts["i2c-qcom-geni.c"], re.S)
+        if not m:
+            raise KeyError(f"no table {name}")
+        for row in re.findall(r"\{\s*([^{}]+?)\s*\}", m.group(1)):
+            cells = [c.strip() for c in row.split(",") if c.strip()]
+            out.append([hz, c_eval(cells[0], defs)] + [int(c, 0) for c in cells[1:]])
+    return out
+
+
+def repo_scl_table(path):
+    m = re.search(r"geni_i2c_scl_table\[\]\s*=\s*\{(.*?)\n\};", Path(path).read_text(), re.S)
+    if not m:
+        raise KeyError(f"{path}: no geni_i2c_scl_table")
+    return [[_int(c) for c in row.split(",")] for row in re.findall(r"\{([^{}]+)\}", m.group(1))]
+
+
+# (repository header, repository name, Linux file, Linux name)
+GENI_PAIRS = [(f"GeniI2cCore.h", ours, src, theirs) for ours, src, theirs in [
+    ("GENI_STATUS", "geni-se.h", "SE_GENI_STATUS"), ("GENI_SER_M_CLK_CFG", "geni-se.h", "GENI_SER_M_CLK_CFG"),
+    ("GENI_IF_DISABLE_RO", "geni-se.h", "GENI_IF_DISABLE_RO"), ("GENI_FW_REVISION_RO", "geni-se.h", "GENI_FW_REVISION_RO"),
+    ("GENI_CLK_SEL", "geni-se.h", "SE_GENI_CLK_SEL"), ("GENI_BYTE_GRAN", "qcom-geni-se.c", "SE_GENI_BYTE_GRAN"),
+    ("GENI_DMA_MODE_EN", "geni-se.h", "SE_GENI_DMA_MODE_EN"),
+    ("GENI_TX_PACKING_CFG0", "qcom-geni-se.c", "SE_GENI_TX_PACKING_CFG0"),
+    ("GENI_TX_PACKING_CFG1", "qcom-geni-se.c", "SE_GENI_TX_PACKING_CFG1"),
+    ("GENI_RX_PACKING_CFG0", "qcom-geni-se.c", "SE_GENI_RX_PACKING_CFG0"),
+    ("GENI_RX_PACKING_CFG1", "qcom-geni-se.c", "SE_GENI_RX_PACKING_CFG1"),
+    ("GENI_I2C_TX_TRANS_LEN", "i2c-qcom-geni.c", "SE_I2C_TX_TRANS_LEN"),
+    ("GENI_I2C_RX_TRANS_LEN", "i2c-qcom-geni.c", "SE_I2C_RX_TRANS_LEN"),
+    ("GENI_I2C_SCL_COUNTERS", "i2c-qcom-geni.c", "SE_I2C_SCL_COUNTERS"),
+    ("GENI_M_CMD0", "geni-se.h", "SE_GENI_M_CMD0"), ("GENI_M_CMD_CTRL", "geni-se.h", "SE_GENI_M_CMD_CTRL_REG"),
+    ("GENI_M_IRQ_STATUS", "geni-se.h", "SE_GENI_M_IRQ_STATUS"), ("GENI_M_IRQ_EN", "geni-se.h", "SE_GENI_M_IRQ_EN"),
+    ("GENI_M_IRQ_CLEAR", "geni-se.h", "SE_GENI_M_IRQ_CLEAR"), ("GENI_TX_FIFO", "geni-se.h", "SE_GENI_TX_FIFOn"),
+    ("GENI_RX_FIFO", "geni-se.h", "SE_GENI_RX_FIFOn"), ("GENI_TX_FIFO_STATUS", "geni-se.h", "SE_GENI_TX_FIFO_STATUS"),
+    ("GENI_RX_FIFO_STATUS", "geni-se.h", "SE_GENI_RX_FIFO_STATUS"),
+    ("GENI_TX_WATERMARK", "geni-se.h", "SE_GENI_TX_WATERMARK_REG"), ("GENI_M_GP_LENGTH", "geni-se.h", "SE_GENI_M_GP_LENGTH"),
+    ("GENI_HW_PARAM_0", "geni-se.h", "SE_HW_PARAM_0"),
+    ("GENI_M_CMD_ACTIVE", "geni-se.h", "M_GENI_CMD_ACTIVE"), ("GENI_FIFO_IF_DISABLE", "geni-se.h", "FIFO_IF_DISABLE"),
+    ("GENI_FW_PROTOCOL_MASK", "geni-se.h", "FW_REV_PROTOCOL_MSK"),
+    ("GENI_FW_PROTOCOL_SHIFT", "geni-se.h", "FW_REV_PROTOCOL_SHFT"), ("GENI_SER_CLK_EN", "geni-se.h", "SER_CLK_EN"),
+    ("GENI_CLK_DIV_MASK", "geni-se.h", "CLK_DIV_MSK"), ("GENI_CLK_DIV_SHIFT", "geni-se.h", "CLK_DIV_SHFT"),
+    ("GENI_SCL_HIGH_MASK", "i2c-qcom-geni.c", "HIGH_COUNTER_MSK"),
+    ("GENI_SCL_HIGH_SHIFT", "i2c-qcom-geni.c", "HIGH_COUNTER_SHFT"),
+    ("GENI_SCL_LOW_MASK", "i2c-qcom-geni.c", "LOW_COUNTER_MSK"), ("GENI_SCL_LOW_SHIFT", "i2c-qcom-geni.c", "LOW_COUNTER_SHFT"),
+    ("GENI_SCL_CYCLE_MASK", "i2c-qcom-geni.c", "CYCLE_COUNTER_MSK"),
+    ("GENI_TX_FIFO_DEPTH_MASK", "geni-se.h", "TX_FIFO_DEPTH_MSK"),
+    ("GENI_TX_FIFO_DEPTH_SHIFT", "geni-se.h", "TX_FIFO_DEPTH_SHFT"), ("GENI_RX_FIFO_WC_MASK", "geni-se.h", "RX_FIFO_WC_MSK"),
+    ("GENI_RX_LAST", "geni-se.h", "RX_LAST"), ("GENI_M_CMD_ABORT", "geni-se.h", "M_GENI_CMD_ABORT"),
+    ("GENI_M_CMD_CANCEL", "geni-se.h", "M_GENI_CMD_CANCEL"),
+    ("GENI_M_CMD_DONE", "geni-se.h", "M_CMD_DONE_EN"), ("GENI_M_CMD_OVERRUN", "geni-se.h", "M_CMD_OVERRUN_EN"),
+    ("GENI_M_ILLEGAL_CMD", "geni-se.h", "M_ILLEGAL_CMD_EN"), ("GENI_M_CMD_FAILURE", "geni-se.h", "M_CMD_FAILURE_EN"),
+    ("GENI_M_CMD_CANCEL_IRQ", "geni-se.h", "M_CMD_CANCEL_EN"), ("GENI_M_CMD_ABORT_IRQ", "geni-se.h", "M_CMD_ABORT_EN"),
+    ("GENI_M_GP_IRQ_0", "geni-se.h", "M_GP_IRQ_0_EN"), ("GENI_M_GP_IRQ_1", "geni-se.h", "M_GP_IRQ_1_EN"),
+    ("GENI_M_GP_IRQ_3", "geni-se.h", "M_GP_IRQ_3_EN"), ("GENI_M_GP_IRQ_4", "geni-se.h", "M_GP_IRQ_4_EN"),
+    ("GENI_M_RX_FIFO_WATERMARK", "geni-se.h", "M_RX_FIFO_WATERMARK_EN"),
+    ("GENI_M_RX_FIFO_LAST", "geni-se.h", "M_RX_FIFO_LAST_EN"),
+    ("GENI_M_TX_FIFO_WATERMARK", "geni-se.h", "M_TX_FIFO_WATERMARK_EN"),
+    ("GENI_I2C_ERR_BITS", "i2c-qcom-geni.c", "SE_I2C_ERR"),
+    ("GENI_I2C_WRITE", "i2c-qcom-geni.c", "I2C_WRITE"), ("GENI_I2C_READ", "i2c-qcom-geni.c", "I2C_READ"),
+    ("GENI_I2C_STOP_STRETCH", "i2c-qcom-geni.c", "STOP_STRETCH"), ("GENI_I2C_ADDR_MASK", "i2c-qcom-geni.c", "SLV_ADDR_MSK"),
+    ("GENI_I2C_ADDR_SHIFT", "i2c-qcom-geni.c", "SLV_ADDR_SHFT"),
+    ("GENI_M_OPCODE_SHIFT", "geni-se.h", "M_OPCODE_SHFT"), ("GENI_M_PARAMS_MASK", "geni-se.h", "M_PARAMS_MSK"),
+]]
+KTZ_PAIRS = [("BacklightBoard.h", ours, "ktz8866.c", theirs) for ours, theirs in [
+    ("BKL_REG_DEVICE_ID", "DEVICE_ID"), ("BKL_REG_CFG2", "BL_CFG2"), ("BKL_REG_BRT_LSB", "BL_BRT_LSB"),
+    ("BKL_REG_BRT_MSB", "BL_BRT_MSB"), ("BKL_REG_EN", "BL_EN"), ("BKL_REG_LCD_BIAS_CFG1", "LCD_BIAS_CFG1"),
+    ("BKL_REG_DIMMING", "BL_DIMMING"), ("BKL_REG_MAX", "REG_MAX"), ("BKL_EN_BIT", "BL_EN_BIT"),
+    ("BKL_LCD_BIAS_EN", "LCD_BIAS_EN"), ("BKL_PWM_HYST", "PWM_HYST"), ("BKL_MAX_LEVEL", "MAX_BRIGHTNESS"),
+    ("BKL_DEFAULT_LEVEL", "DEFAULT_BRIGHTNESS"),
+]]
+
+
+def driver_facts(linux):
+    texts = {k: (Path(linux) / v).read_text() for k, v in LINUX_DRIVERS.items()}
+    linux_defs = {k: c_defines(t) for k, t in texts.items()}
+    merged = {}
+    for k in ("i2c.h", "geni-se.h", "qcom-geni-se.c", "i2c-qcom-geni.c", "ktz8866.c"):
+        merged.update(linux_defs[k])
+    repo_defs = {h: c_defines((PKG / h).read_text()) for h in ("GeniI2cCore.h", "BacklightBoard.h")}
+    rows = []
+
+    def add(fact, repo_src, repo_fn, linux_src, linux_fn):
+        try:
+            repo = repo_fn()
+        except (KeyError, ValueError, SyntaxError) as e:
+            repo = f"ERROR {e}"
+        try:
+            lx = linux_fn()
+        except (KeyError, ValueError, SyntaxError) as e:
+            lx = f"ERROR {e}"
+        rows.append({"fact": fact, "repository": repo_src, "repo": repo, "linux_source": linux_src, "linux": lx})
+
+    for header, ours, src, theirs in GENI_PAIRS + KTZ_PAIRS:
+        add(ours, f"package/{header} {ours}", lambda h=header, o=ours: c_eval(repo_defs[h][o], repo_defs[h]),
+            f"{LINUX_DRIVERS[src]} {theirs}",
+            lambda s=src, t=theirs: c_eval(linux_defs[s][t], {**merged, **linux_defs[s]}))
+    add("GENI_PROTOCOL_I2C", "package/GeniI2cCore.h GENI_PROTOCOL_I2C",
+        lambda: c_eval(repo_defs["GeniI2cCore.h"]["GENI_PROTOCOL_I2C"], {}),
+        f"{LINUX_DRIVERS['geni-se.h']} enum geni_se_protocol_type GENI_SE_I2C",
+        lambda: c_enum_index(texts["geni-se.h"], "geni_se_protocol_type", "GENI_SE_I2C"))
+    add("SCL tables (19.2 and 32 MHz)", "package/GeniI2cCore.h geni_i2c_scl_table",
+        lambda: repo_scl_table(PKG / "GeniI2cCore.h"),
+        f"{LINUX_DRIVERS['i2c-qcom-geni.c']} geni_i2c_clk_map_19p2mhz, _32mhz", lambda: linux_scl_tables(texts, merged))
+    for r in rows:
+        bad = any(isinstance(r[k], str) and r[k].startswith("ERROR") for k in ("repo", "linux"))
+        r["result"] = "error" if bad else ("match" if r["repo"] == r["linux"] else "MISMATCH")
+    return rows
+
+
+def struct_array(path, name):
+    """The rows of `name[] = {{a, b}, {c, d}}` as lists of integers."""
+    m = re.search(rf"\b{re.escape(name)}\s*\[[^\]]*\]\s*=\s*\{{(.*?)\}};", Path(path).read_text(), re.S)
+    if not m:
+        raise KeyError(f"{path}: no array {name}")
+    return [[_int(c) for c in row.split(",")] for row in re.findall(r"\{([^{}]+)\}", m.group(1))]
+
+
+def vendor_facts(vendor):
+    src = Source.load(*[Path(vendor) / f for f in VENDOR_FILES])
+    P, T, L = PKG / "PanelBoard.h", PKG / "TouchBoard.h", PKG / "BacklightBoard.h"
+    rows = []
+
+    def add(area, fact, repo_src, repo_fn, vendor_src, vendor_fn):
+        try:
+            repo = repo_fn()
+        except (KeyError, LookupError, ValueError) as e:
+            repo = f"ERROR {e}"
+        try:
+            v = vendor_fn()
+        except (KeyError, LookupError, ValueError) as e:
+            v = f"ERROR {e}"
+        rows.append({"area": area, "fact": fact, "repository": repo_src, "repo": repo, "vendor_source": vendor_src,
+                     "vendor": v})
+
+    def gpio(node, prop):
+        cells = node.cells(prop)
+        if cells[0] != "&tlmm":
+            raise LookupError(f"{node.path} {prop}: not a TLMM GPIO: {cells}")
+        return cells[1]
+
+    def pins(node):
+        return [int(p[4:]) for p in node.child("mux").strings("pins")]
+
+    for id_macro, label in VENDOR_PANELS.items():
+        panel = lambda lb=label: src.label(lb)
+        timing = lambda lb=label: src.label(lb).child("qcom,mdss-dsi-display-timings").child("timing")
+        tag = f"panel {id_macro[7:]}"
+        where = f"{label} (dsi-panel-m82-*.dtsi, kona-sde-display.dtsi)"
+        add("display", f"{tag}: identity", f"package/PanelBoard.h PNL_ID_MODEL, {id_macro}",
+            lambda m=id_macro: [macro(P, "PNL_ID_MODEL"), macro(P, m)], f"{where} mi,panel-id",
+            lambda p=panel: p().u32s("mi,panel-id"))
+        add("display", f"{tag}: DSI interfaces, lanes, bpp", "package/PanelBoard.h PNL_DSI_COUNT, PNL_LANES, PNL_BPP",
+            lambda: [macro(P, "PNL_DSI_COUNT"), macro(P, "PNL_LANES"), macro(P, "PNL_BPP")],
+            f"{where} qcom,dsi-ctrl-num, lane-N-state, mdss-dsi-bpp",
+            lambda p=panel: [len(p().u32s("qcom,dsi-ctrl-num")),
+                             sum(p().flag(f"qcom,mdss-dsi-lane-{i}-state") for i in range(4)), p().u32("qcom,mdss-dsi-bpp")])
+        add("display", f"{tag}: video mode, traffic", "package/PanelBoard.h (video mode, non-burst sync events)",
+            lambda: ["dsi_video_mode", "non_burst_sync_event"], f"{where} panel-type, traffic-mode",
+            lambda p=panel: [p().string("qcom,mdss-dsi-panel-type"), p().string("qcom,mdss-dsi-traffic-mode")])
+        add("display", f"{tag}: refresh and lane bit clock", "package/PanelBoard.h PNL_FPS, PNL_BITCLK_HZ",
+            lambda: [macro(P, "PNL_FPS"), macro(P, "PNL_BITCLK_HZ")], f"{where} timing@0 framerate, clockrate",
+            lambda t=timing: [t().u32("qcom,mdss-dsi-panel-framerate"), t().u32("qcom,mdss-dsi-panel-clockrate")])
+        add("display", f"{tag}: active area per DSI", "package/PanelBoard.h PNL_H_ACTIVE, PNL_V_ACTIVE",
+            lambda: [macro(P, "PNL_H_ACTIVE"), macro(P, "PNL_V_ACTIVE")], f"{where} timing@0 panel-width, -height",
+            lambda t=timing: [t().u32("qcom,mdss-dsi-panel-width"), t().u32("qcom,mdss-dsi-panel-height")])
+        add("display", f"{tag}: porches and pulses", "package/PanelBoard.h PNL_HPW, _HBP, _HFP, _VPW, _VBP, _VFP",
+            lambda: [macro(P, n) for n in ("PNL_HPW", "PNL_HBP", "PNL_HFP", "PNL_VPW", "PNL_VBP", "PNL_VFP")],
+            f"{where} timing@0 h/v pulse width, back porch, front porch",
+            lambda t=timing: [t().u32(f"qcom,mdss-dsi-{n}") for n in ("h-pulse-width", "h-back-porch", "h-front-porch",
+                                                                      "v-pulse-width", "v-back-porch", "v-front-porch")])
+        add("display", f"{tag}: DSC", "package/PanelBoard.h PNL_DSC_*",
+            lambda: [macro(P, n) for n in ("PNL_DSC_VERSION", "PNL_DSC_SLICE_WIDTH", "PNL_DSC_SLICE_HEIGHT",
+                                           "PNL_DSC_SLICE_PER_PKT", "PNL_DSC_BPC", "PNL_DSC_BPP")] + ["dsc"],
+            f"{where} timing@0 qcom,mdss-dsc-*, compression-mode",
+            lambda t=timing: [t().u32(f"qcom,mdss-dsc-{n}") for n in ("version", "slice-width", "slice-height",
+                                                                      "slice-per-pkt", "bit-per-component", "bit-per-pixel")]
+            + [t().string("qcom,compression-mode")])
+        add("display", f"{tag}: topology", "package/PanelBoard.h PNL_TOPOLOGY_LM, _DSC, _INTF",
+            lambda: [macro(P, "PNL_TOPOLOGY_LM"), macro(P, "PNL_TOPOLOGY_DSC"), macro(P, "PNL_TOPOLOGY_INTF")],
+            f"{where} timing@0 qcom,display-topology", lambda t=timing: t().u32s("qcom,display-topology"))
+        add("display", f"{tag}: PHY timings", "package/PanelBoard.h pnl_phy_timings", lambda: array(P, "pnl_phy_timings"),
+            f"{where} timing@0 qcom,mdss-dsi-panel-phy-timings",
+            lambda t=timing: list(t().bytes("qcom,mdss-dsi-panel-phy-timings")))
+        add("display", f"{tag}: physical size (0.1 mm)", "package/PanelBoard.h PNL_WIDTH_DMM, PNL_HEIGHT_DMM",
+            lambda: [macro(P, "PNL_WIDTH_DMM"), macro(P, "PNL_HEIGHT_DMM")], f"{where} mdss-pan-physical-*-dimension",
+            lambda p=panel: [p().u32("qcom,mdss-pan-physical-width-dimension"),
+                             p().u32("qcom,mdss-pan-physical-height-dimension")])
+        add("display", f"{tag}: reset sequence", "package/PanelBoard.h pnl_reset_sequence",
+            lambda: struct_array(P, "pnl_reset_sequence"), f"{where} qcom,mdss-dsi-reset-sequence",
+            lambda p=panel: p().groups("qcom,mdss-dsi-reset-sequence"))
+        add("display", f"{tag}: dynamic fps list", "package/PanelBoard.h pnl_dfps", lambda: array(P, "pnl_dfps"),
+            f"{where} qcom,dsi-supported-dfps-list", lambda p=panel: p().u32s("qcom,dsi-supported-dfps-list"))
+        add("display", f"{tag}: status check", "package/PanelBoard.h PNL_STATUS_DCS, PNL_STATUS_VALUE",
+            lambda: [macro(P, "PNL_STATUS_DCS"), macro(P, "PNL_STATUS_VALUE")],
+            f"{where} panel-status-command (last byte), -status-value",
+            lambda p=panel: [p().bytes("qcom,mdss-dsi-panel-status-command")[-1],
+                             p().u32("qcom,mdss-dsi-panel-status-value")])
+        add("display", f"{tag}: ESD interrupt GPIOs", "package/PanelBoard.h PNL_GPIO_ESD, PNL_GPIO_ESD_SEC",
+            lambda: [macro(P, "PNL_GPIO_ESD"), macro(P, "PNL_GPIO_ESD_SEC")], f"{where} mi,esd-err-irq-gpio(-sec)",
+            lambda p=panel: [gpio(p(), "mi,esd-err-irq-gpio"), gpio(p(), "mi,esd-err-irq-gpio-sec")])
+    add("display", "panel TE GPIO", "package/PanelBoard.h PNL_GPIO_TE", lambda: macro(P, "PNL_GPIO_TE"),
+        "sde_dsi qcom,platform-te-gpio (kona-sde-display.dtsi)",
+        lambda: gpio(src.label("sde_dsi"), "qcom,platform-te-gpio"))
+    add("display", "panel DVDD rails (GPIO, uV)", "package/PanelBoard.h PNL_GPIO_DVDD_BUCK, _LDO, PNL_DVDD_UV",
+        lambda: [macro(P, "PNL_GPIO_DVDD_BUCK"), macro(P, "PNL_GPIO_DVDD_LDO"), [macro(P, "PNL_DVDD_UV")]],
+        "display_panel_dvdd_buck / _ldo gpio, regulator-min-microvolt (pipa-sm8250.dtsi)",
+        lambda: [gpio(src.label("display_panel_dvdd_buck"), "gpio"), gpio(src.label("display_panel_dvdd_ldo"), "gpio"),
+                 sorted({src.label(n).u32("regulator-min-microvolt")
+                         for n in ("display_panel_dvdd_buck", "display_panel_dvdd_ldo")})])
+    add("display", "panel bias rails (GPIO, uV, ramp)", "package/PanelBoard.h PNL_GPIO_ENP, _ENN, PNL_BIAS_UV, _RAMP_US",
+        lambda: [macro(P, "PNL_GPIO_ENP"), macro(P, "PNL_GPIO_ENN"), macro(P, "PNL_BIAS_UV"), macro(P, "PNL_BIAS_RAMP_US")],
+        "display_panel_enp / _enn (pipa-sm8250.dtsi)",
+        lambda: [gpio(src.label("display_panel_enp"), "gpio"), gpio(src.label("display_panel_enn"), "gpio"),
+                 src.label("display_panel_enp").u32("regulator-min-microvolt"),
+                 src.label("display_panel_enp").u32("regulator-enable-ramp-delay")])
+
+    # Touch: Novatek NT36532 on SPI (QUP0 SE4)
+    spi = lambda: src.label("qupv3_se4_spi")
+    nvt = lambda: spi().child("novatek")
+    add("touch", "touch SPI serial engine", "package/TouchBoard.h TB_SE_BASE, TB_SE_SIZE",
+        lambda: [macro(T, "TB_SE_BASE"), macro(T, "TB_SE_SIZE")], "qupv3_se4_spi reg (kona-qupv3.dtsi)",
+        lambda: spi().u32s("reg"))
+    add("touch", "touch controller enabled on it", "package/TouchProbe.cpp (Novatek NT36532 on SPI)",
+        lambda: ["novatek,NVT-ts-spi", True], "qupv3_se4_spi/novatek@0 compatible, status (pipa-sm8250.dtsi)",
+        lambda: [nvt().string("compatible"), spi().enabled() and nvt().enabled()])
+    add("touch", "touch interrupt GPIO", "package/TouchBoard.h TB_GPIO_IRQ", lambda: macro(T, "TB_GPIO_IRQ"),
+        "novatek@0 novatek,irq-gpio", lambda: gpio(nvt(), "novatek,irq-gpio"))
+    add("touch", "touch SPI clock", "package/TouchBoard.h TB_SPI_DEFAULT_HZ", lambda: macro(T, "TB_SPI_DEFAULT_HZ"),
+        "novatek@0 spi-max-frequency", lambda: nvt().u32("spi-max-frequency"))
+    add("touch", "touch SPI pins (data/clock, CS)", "package/TouchBoard.h TB_GPIO_SPI_FIRST.., TB_GPIO_SPI_CS",
+        lambda: [list(range(macro(T, "TB_GPIO_SPI_FIRST"), macro(T, "TB_GPIO_SPI_FIRST") + 3)), [macro(T, "TB_GPIO_SPI_CS")]],
+        "qupv3_se4_spi_active, ts_cs_active mux pins",
+        lambda: [pins(src.label("qupv3_se4_spi_active")), pins(src.label("ts_cs_active"))])
+    add("touch", "touch pin function and drive", "package/TouchBoard.h TB_FUNC_QUP4 (qup4), TB_DRIVE_6MA (mA/2-1)",
+        lambda: ["qup4", "qup4", (macro(T, "TB_DRIVE_6MA") + 1) * 2, (macro(T, "TB_DRIVE_6MA") + 1) * 2],
+        "qupv3_se4_spi_active / ts_cs_active function, drive-strength",
+        lambda: [src.label("qupv3_se4_spi_active").child("mux").string("function"),
+                 src.label("ts_cs_active").child("mux").string("function"),
+                 src.label("qupv3_se4_spi_active").child("config").u32("drive-strength"),
+                 src.label("ts_cs_active").child("config").u32("drive-strength")])
+    add("touch", "touch firmware by panel maker", "package/PanelBoard.h PNL_MAKER_CSOT, PNL_MAKER_TM",
+        lambda: [macro(P, "PNL_MAKER_CSOT"), macro(P, "PNL_MAKER_TM")], "novatek@0 cfg_N novatek,display-maker",
+        lambda: [c.u32("novatek,display-maker") for n, c in sorted(nvt().children.items()) if n.startswith("novatek,cfg_")])
+
+    # Backlight, the vendor view (compatible differs from mainline's kinetic,ktz8866)
+    i2c = lambda: src.label("qupv3_se11_i2c")
+    ktz = lambda: i2c().child("ktz8866")
+    add("display", "backlight I2C serial engine (vendor)", "package/BacklightBoard.h BKL_I2C_SE_BASE",
+        lambda: macro(L, "BKL_I2C_SE_BASE"), "qupv3_se11_i2c reg (kona-qupv3.dtsi)", lambda: i2c().u32s("reg")[0])
+    add("display", "backlight controller (vendor)", "package/BacklightBoard.h BKL_I2C_ADDR",
+        lambda: ["ktz,ktz8866", macro(L, "BKL_I2C_ADDR"), True], "ktz8866@11 compatible, reg, status",
+        lambda: [ktz().string("compatible"), ktz().u32("reg"), i2c().enabled() and ktz().enabled()])
+    add("display", "backlight GPIOs (vendor)", "package/BacklightBoard.h BKL_GPIO_ENABLE, _VDDPOS, _VDDNEG, _PANELID",
+        lambda: [macro(L, n) for n in ("BKL_GPIO_ENABLE", "BKL_GPIO_VDDPOS", "BKL_GPIO_VDDNEG", "BKL_GPIO_PANELID")],
+        "ktz8866@11 ktz8866,hwen/enp/enn/panelid-gpio",
+        lambda: [gpio(ktz(), f"ktz8866,{n}-gpio") for n in ("hwen", "enp", "enn", "panelid")])
+    for r in rows:
+        bad = any(isinstance(r[k], str) and r[k].startswith("ERROR") for k in ("repo", "vendor"))
+        r["result"] = "error" if bad else ("match" if r["repo"] == r["vendor"] else "MISMATCH")
+    return rows
+
+
+def run_vendor(args):
+    rows = vendor_facts(args.vendor)
+    summary = {k: sum(1 for r in rows if r["result"] == k) for k in ("match", "MISMATCH", "error")}
+    if args.json:
+        Path(args.json).write_text(json.dumps({"vendor": VENDOR_GIT, "branch": VENDOR_BRANCH, "commit": VENDOR_COMMIT,
+                                               "summary": summary, "facts": rows}, indent=2, default=str) + "\n")
+    width = max(len(r["fact"]) for r in rows)
+    for r in rows:
+        print(f"{r['result']:8} {r['area']:8} {r['fact']:{width}}  repo={fmt(r['repo'])}  vendor={fmt(r['vendor'])}")
+    print(json.dumps(summary))
+    if summary["MISMATCH"] or summary["error"]:
+        sys.exit("board facts disagree with the vendor pipa device tree")
+
+
+def run_drivers(args):
+    rows = driver_facts(args.linux)
+    summary = {k: sum(1 for r in rows if r["result"] == k) for k in ("match", "MISMATCH", "error")}
+    if args.json:
+        Path(args.json).write_text(json.dumps({"linux": LINUX_COMMIT, "summary": summary, "facts": rows}, indent=2,
+                                              default=str) + "\n")
+    width = max(len(r["fact"]) for r in rows)
+    for r in rows:
+        print(f"{r['result']:8} {r['fact']:{width}}  repo={fmt(r['repo'])}  linux={fmt(r['linux'])}")
+    print(json.dumps(summary))
+    if summary["MISMATCH"] or summary["error"]:
+        sys.exit("driver constants disagree with the Linux driver sources")
+
+
 # Inventory ------------------------------------------------------------------------------------------------------------
 
 def binding_names(linux):
@@ -609,6 +983,14 @@ def main():
     p.add_argument("--linux", type=Path, required=True)
     p.add_argument("--markdown", type=Path)
     p.add_argument("--check", action="store_true")
+    p = sub.add_parser("fetch-vendor")
+    p.add_argument("--vendor", type=Path, required=True)
+    p = sub.add_parser("vendor")
+    p.add_argument("--vendor", type=Path, required=True)
+    p.add_argument("--json", type=Path)
+    p = sub.add_parser("drivers")
+    p.add_argument("--linux", type=Path, required=True)
+    p.add_argument("--json", type=Path)
     args = ap.parse_args()
     if args.cmd == "fetch":
         print(fetch(args.linux))
@@ -619,6 +1001,12 @@ def main():
         print(compile_dts(args.linux, args.out, args.dtc, args.cpp))
     elif args.cmd == "check":
         run_check(args)
+    elif args.cmd == "drivers":
+        run_drivers(args)
+    elif args.cmd == "fetch-vendor":
+        print(fetch_vendor(args.vendor))
+    elif args.cmd == "vendor":
+        run_vendor(args)
     else:
         run_inventory(args)
 

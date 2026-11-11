@@ -21,6 +21,7 @@
 #define BKL_GPIO_ENABLE 139                    // TLMM, active high (HWEN)
 #define BKL_GPIO_VDDPOS 130                    // TLMM, the +5.5 V panel bias regulator enable
 #define BKL_GPIO_VDDNEG 131                    // TLMM, the -5.5 V panel bias regulator enable
+#define BKL_GPIO_PANELID 30                    // TLMM, ktz8866,panelid-gpio of the vendor tree (not in mainline)
 #define BKL_SINKS 5u
 #define BKL_CURRENT_RAMP_MS 128u
 #define BKL_LED_RAMP_MS 1u

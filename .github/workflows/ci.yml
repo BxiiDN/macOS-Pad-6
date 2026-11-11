@@ -103,6 +103,11 @@ jobs:
           python3 scripts/pipa_hw.py check --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --soc "$soc" --json pipa-hw-check.json
           python3 scripts/pipa_hw.py inventory --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --linux "$RUNNER_TEMP/linux" \
             --markdown docs/evidence/hardware/pipa-mainline-inventory.md --check
+          python3 scripts/pipa_hw.py drivers --linux "$RUNNER_TEMP/linux" --json pipa-hw-drivers.json
+      - name: pipa panel, touch and backlight facts agree with Xiaomi's Android device tree source (pipa-t-oss)
+        run: |
+          python3 scripts/pipa_hw.py fetch-vendor --vendor "$RUNNER_TEMP/micode-dt"
+          python3 scripts/pipa_hw.py vendor --vendor "$RUNNER_TEMP/micode-dt" --json pipa-hw-vendor.json
       - name: Tahoe 26.5 profile also resolves on an upstream format 2 board (UniXNU-sheng, cross-check)
         run: |
           git clone -q https://github.com/UniXNU/UniXNU-sheng "$RUNNER_TEMP/sheng"
@@ -129,6 +134,8 @@ jobs:
             pipa-board.json
             chain-tahoe-26.5.json
             pipa-hw-check.json
+            pipa-hw-drivers.json
+            pipa-hw-vendor.json
           if-no-files-found: ignore
 
   # The host tests of the board package (devices/pipa/package), on x86 and on arm64. A650GmuTests links
