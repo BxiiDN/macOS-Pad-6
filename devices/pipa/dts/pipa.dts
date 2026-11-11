@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+// Xiaomi Pad 6 (pipa, SM8250) hardware description for UniXNU's ADT generator (format 2).
+//
+// Converted from scripts/make-pipa-adt.py of UniXNU-pipa cdb3d62 (format 1). Every value is that script's:
+//   - GICv3 0x17a00000/0x10000 and 0x17a60000/0x100000, stride 0x20000, 19.2 MHz timebase: sm8250.dtsi of
+//     UniXNU-sm8250-common (Linux sm8250.dtsi 5b0764a5), the same numbers the script hard-coded;
+//   - eight cores, MPIDR 0x000..0x700 in Affinity1, boot CPU first; 0x000..0x300 Cortex-A55 as cluster E and
+//     0x400..0x700 Cortex-A77 as cluster P (the script's cluster-type);
+//   - one DRAM range from the base to the end of the last bank (the script's --dram-size, board.toml payload.dram_size);
+//   - the UFS host published for class matching (the script's ufshc node).
+// The panel's cont_splash_region is the stock one (UniXNU-pipa README, read under Android).
+/dts-v1/;
+/include/ "sm8250.dtsi"
+
+/ {
+    model = "Xiaomi Pad 6";
+    compatible = "xiaomi,pipa", "qcom,sm8250";
+
+    // Reference tablet (16 GB): banks 0x80000000+0x37700000, 0xc0000000+0x1c0000000, 0x800000000+0x200000000.
+    // dram-base 0x80000000, dram-size 0x980000000. DarwinBoot takes the kernel's window from the firmware's map, not
+    // from this range; a tablet with less memory leaves the span's tail empty.
+    memory@80000000 {
+        device_type = "memory";
+        reg = <0x0 0x80000000 0x9 0x80000000>;
+    };
+
+    reserved-memory {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+
+        splash_region: splash_region@9c000000 {
+            reg = <0x0 0x9c000000 0x0 0x2300000>;
+            label = "cont_splash_region";
+        };
+    };
+};
+
+&cpu0 { unixnu,cluster-type = "E"; };
+&cpu1 { unixnu,cluster-type = "E"; };
+&cpu2 { unixnu,cluster-type = "E"; };
+&cpu3 { unixnu,cluster-type = "E"; };
+&cpu4 { unixnu,cluster-type = "P"; };
+&cpu5 { unixnu,cluster-type = "P"; };
+&cpu6 { unixnu,cluster-type = "P"; };
+&cpu7 { unixnu,cluster-type = "P"; };
+
+// Published for class matching, as format 1 did. No arm64e UFS driver for SM8250 exists yet.
+&ufs { status = "okay"; };
+&ufsphy { status = "okay"; };

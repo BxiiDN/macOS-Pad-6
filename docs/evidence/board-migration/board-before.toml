@@ -1,0 +1,289 @@
+# Board description of the Xiaomi Pad 6 (pipa, SM8250), read by the unixnu build driver.
+#
+# Prepared without the tablet: every value names its public source and none has been observed through UniXNU on a
+# pipa yet. The memory banks and [userdata] were read from the tablet under Android (android-devinfo, 2026-10-21).
+
+[board]
+name = "pipa"
+soc = "SM8250"
+description = "Xiaomi Pad 6"
+kit = "pipa"                       # a package/ of this repository would appear as kits/pipa in the build tree
+
+# The same target OS image as UniXNU-sheng: the unchanged iPad7,1 iPadOS 17.7.11 restore image.
+[ipsw]
+url = "https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw"
+product = "iPad7,1"
+version = "17.7.11"
+build = "21H461"
+device_class = "j120ap"
+chip_id = 0x8011
+board_id = 12
+fetch = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemTrustCache"]
+
+[ipsw.sha256]
+"044-76040-038.dmg" = "3f99b859c9728379110b66657c7b15285bcb1925ad8b5726542e2cdcf8b1028d"
+"044-76034-038.dmg" = "b4908cde41d23e6bc05e6af51a2c9eeb00cf0f863a6a18b1600c96a3fd70414f"
+
+# Android's userdata (sda34 on the UFS LUN 0, 106.6 GiB), from the tablet's GPT, which agrees with sysfs. "unixnu build
+# userdata" writes the image for it; flashing it erases Android's data. The windows are those of UniXNU-sheng: the same
+# target image.
+[userdata]
+first_lba = 0x293000
+last_lba = 0x1d387fa
+lba_bytes = 4096
+windows = [
+  { name = "OS", component = "OS" },
+  { name = "SystemOS", component = "Cryptex1,SystemOS" },
+]
+
+[kernel]
+defconfig = "pipa_defconfig"
+# Archive builders of the kernel step, in order; the ones pipa_defconfig links. build-arm-driver.py is UniXNU's generic
+# driver builder, which finds each component in UniXNU's components.toml.
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "build-arm-driver.py ArmDTPlatform",
+  "build-arm-driver.py ArmCpu",
+  "build-arm-driver.py SoftwareAES",
+  # drivers/PipaUfs: the SM8250 host with the verified block device and root publication.
+  "build-arm-driver.py PipaUfs --sm8250",
+  "build-arm-driver.py VirtioMmioBlock --verified-root",
+  "build-virtio-mmio-bindings.py --component VirtioMmioBlock --directory build/virtio-mmio-block-verified",
+  "build-arm-driver.py RamBlock",
+  "build-virtio-mmio-bindings.py --component RamBlock --directory build/ram-block",
+  "build-software-aes-bindings.py",
+  "build-libpthread-kernel.py",
+  "build-link-stubs.py",
+  "build-platform-power.py",
+  # The 395-byte owner root anchor and the XNU crypto adapter, the same pinned key as UniXNU-tb128fu; the signed envelopes are
+  # in userdata (UniXNU-tb128fu's userdata-root image).
+  "build-verified-root-key.py --pin 70a5ea346d2d779a7ef43eb4ed8b17f54488e160d8c2a6d6420969664e3ae798",
+  # Adreno650 (NativeAdreno for the Adreno 650) with the GMU's SMMU context, the HFI kit and the A650 cold start
+  # (CONFIG_XNU_NATIVE_ADRENO).
+  "build-adreno650.py",
+  # The staged accelerator class added to the same archive (GpuProbe.cpp mode 12), as on UniXNU-tb128fu.
+  "build-adreno740-accelerator.py --component Adreno650",
+  # The display, key store stand-in and HID input (CONFIG_XNU_NATIVE_LEGACY_DISPLAY); it reads the previous kernel step's
+  # kernel.macho and UniXNU-qemu's display reference (see its header).
+  "build-gop-legacy-display.py",
+]
+
+# The same original kernelcache and prelink selection as UniXNU-sheng: the target image is the same.
+[kernel.prelink]
+tool = "kits/XnuPrelink/emit_prelink.py"
+kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
+kernelcache_sha256 = "f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7"
+slide = "-0x1000000"
+early_security_init = "com.apple.driver.AppleMobileFileIntegrity=0xfffffff005ab4ae0"
+roots = [
+  "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
+  "com.apple.driver.AppleARMPlatform",
+  "com.apple.driver.AppleARMWatchdogTimer",
+  "com.apple.driver.AppleAudioClockLibs",
+  "com.apple.driver.AppleEffaceableStorage",
+  "com.apple.driver.AppleIISController",
+  "com.apple.driver.AppleM2ScalerCSCDriver",
+  "com.apple.driver.AppleMobileFileIntegrity",
+  "com.apple.driver.ApplePMGR",
+  "com.apple.driver.IODARTFamily",
+  "com.apple.filesystems.apfs",
+  "com.apple.iokit.CoreAnalyticsFamily",
+  "com.apple.iokit.IOAVFamily",
+  "com.apple.iokit.IOAudio2Family",
+  "com.apple.iokit.IOCECFamily",
+  "com.apple.iokit.IOCryptoAcceleratorFamily",
+  "com.apple.iokit.IOGPUFamily",
+  "com.apple.iokit.IOHDCPFamily",
+  "com.apple.iokit.IOMobileGraphicsFamily",
+  "com.apple.iokit.IOReportFamily",
+  "com.apple.iokit.IOSlowAdaptiveClockingFamily",
+  "com.apple.iokit.IOStorageFamily",
+  "com.apple.iokit.IOSurface",
+  "com.apple.kec.Libm",
+  "com.apple.kec.corecrypto",
+  "com.apple.kext.AppleMatch",
+  "com.apple.kext.CoreTrust",
+  "com.apple.security.AppleImage4",
+  "com.apple.security.sandbox",
+  "com.apple.iokit.IOHIDFamily",
+  "com.apple.iokit.IOHIDEventDriver",
+]
+
+# The firmware is the Mu-Silicium pipa port (pipaPkg, Kona SM8250) of the uefi-pipa checkout, with UniXNU, the ramdisk
+# block device driver and DarwinBoot added. It keeps the upstream vendor driver set, which upstream lists as working for
+# display, internal storage and the side buttons.
+[firmware]
+config = "pipa"                    # Resources/Configs/pipa.toml in the Mu-Silicium checkout (--uefi or UNIXNU_UEFI)
+dsc = "Platforms/Xiaomi/pipaPkg/pipa.dsc"
+fd = "Build/pipaPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+preflight = ["scripts/check-pipa.py"]   # reads the checkout from UNIXNU_UEFI
+submodules = ["Binaries", "Common/Mu", "Common/Mu_OEM_Sample", "Silicium-ACPI", "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl"]
+# Masks a GIC interrupt that has no handler instead of taking it forever (found on sheng with a leftover IPCC interrupt).
+patches = ["Resources/MuPatches/Gic-Spurious.patch"]
+packages = [
+  "{uefi}",
+  "{uefi}/Platforms/Xiaomi",
+  "{tree}/package",
+  "{tree}/drivers/DarwinBoot",
+  "{edk2}",
+  "{uefi}/Common/Mu",
+  "{uefi}/Common/Mu_OEM_Sample",
+  "{uefi}/Silicon/Qualcomm",
+  "{uefi}/Silicon/Silicium",
+  "{uefi}/Silicium-ACPI",
+  "{uefi}/Silicium-ACPI/Platforms/Xiaomi",
+  "{uefi}/Silicium-ACPI/Silicon/Qualcomm",
+]
+
+[firmware.defines]
+ENABLE_SECUREBOOT = "1"
+MEMORY_PROTECTION = "TRUE"
+SHIP_MODE = "FALSE"
+BUILDID_STRING = "pipa-research"
+
+# Image parameters come from Resources/Configs/pipa.toml of the checkout. Resources/DTBs/pipa.dtb already carries
+# /reserved-memory/cont_splash_region@9c000000, so no [[bootimg.dtb_node]] is added.
+
+# The ramdisk of the boot image: a FAT volume with the UniXNU config, the kernel, its device tree and the optional
+# trust cache and Data seed. DarwinBoot is part of the firmware volume.
+#
+# The kernel is the one pipa_defconfig builds. It has no storage, Data or display driver yet, so the expected end is the
+# root mount, with the kernel log on the frame buffer.
+[payload]
+volume = "PIPAESP"
+size_mib = 192
+loader = "firmware"
+title = "pipa first boot: source 4K XNU to the panic screen"
+# This tablet was upgraded to 16 GB. Android's /memory has the banks 0x80000000+0x37700000, 0xc0000000+0x1c0000000 and
+# 0x800000000+0x200000000: the added 8 GiB is a bank of its own at 32 GiB. XNU takes dram-base and dram-size as one
+# range (is_dram_addr, which only picks the attribute of device mappings), so it spans from the base to the end of the
+# last bank; every register block lies below 0x80000000.
+dram_size = "0x980000000"
+skip_setup_tool = "scripts/seed-data-skip-setup.py"
+# No input device yet: without these SpringBoard preferences iPadOS turns the display off about 30 s after it starts and
+# puts the system to sleep, which ArmCpu does not support (UniXNU-tb128fu, UniXNU-qemu).
+# --plain-framebuffer: the render server's 8-bit, uncompressed framebuffer for the Metal plugin of the GPU addon.
+skip_setup_args = ["--no-auto-dim", "--plain-framebuffer"]
+panic_screen = true                  # patch panic() screen output into the payload copy of the kernel
+# The original static/System trust caches of the same IPSW, as accepted by UniXNU-sheng.
+trust_cache_sha256 = [
+  "7416ca4f8377146626bb284e2133c76bee6cb4e3ee0af5d648b186235a7323a7",
+  "8900d6a93d7a59ce1a872a5c081e559f4240a218f97e12d44d22dda46644d68f",
+]
+# The generic arguments of the sheng image that apply to this kernel. The display, HID, boot progress and sheng-*
+# arguments belong to components pipa_defconfig leaves out; armcpu-spi-ipi is an SM8550 quirk. sheng-pmgr=2 publishes
+# the original PMGR nub through the bridge, which reads and writes no hardware.
+kernel_args = [
+  "-v",
+  "serial=3",
+  "debug=0x14e",
+  "kt_fixed_zones=120",
+  "armcpu-diagnostics=1",
+  "sheng-pmgr=2",
+  "-no_slto_panic",
+  "ml-timeout-lock-panic-scale=40",
+  # Publish the OS/SystemOS windows of userdata (UniXNU-tb128fu's image) through the verified block path; the signed
+  # envelopes come from its policy directory, and diagnostics turn a refused policy into a panic report. native-ufs-probe=16
+  # (the survey and read check, 2026-10-23) is the step before.
+  "native-ufs-root=1",
+  "native-ufs-diagnostics=1",
+  # The Data seed is larger than 2 GiB, so changed pages go through the store window after the root image in userdata.
+  "sheng-data-persist=2",
+  # As on UniXNU-tb128fu: no corpses for crashing processes (their footprint walk took half the CPU there), launchd is told
+  # not to start the jobs of SpringBoard's wait cycle and the ones that restart endlessly without their hardware, and not
+  # watchdogd (no AppleARMWatchdogTimer backend; its exit is fatal).
+  "-no_corpses",
+  "sheng-disable-jobs=com.apple.identityservicesd,com.apple.locationd,com.apple.CommCenter,com.apple.bluetoothd,com.apple.PerfPowerServices,com.apple.iomfb_fdr_loader",
+  "sheng-disable-watchdogd=1",
+  # The display as on UniXNU-tb128fu before its GPU (and UniXNU-qemu): IOMobileGraphicsFamily loaded from bsd_init,
+  # NativeLegacyDisplay on the firmware frame buffer as the system display (phase 4), CPU presentation, the key store stand-in
+  # (liveactivitiesd's Keybag needs AppleKeyStore, or SpringBoard waits on chronod forever) and the HID input with a Home
+  # button. Without it SpringBoard traps on "failed to find the main CADisplay" (pipa, 2026-10-23: 16 times in 420 s).
+  "offline-mobile-graphics-load=1",
+  "offline-legacy-register=1",
+  "offline-legacy-phase=4",
+  "offline-legacy-gop=1",
+  # The UI scale: 2 frame buffer pixels per point, 900x1440 points on the 1800x2880 panel (as an iPad's 2x; at 1 the lock screen of
+  # 2026-10-23 was half size). MobileGestalt caches the scale in the Data overlay: a change needs one sheng-data-reset=1 round.
+  "offline-legacy-unit-scale=2",
+  "offline-legacy-pm=1",
+  "offline-legacy-validate=1",
+  "offline-legacy-transfer=1",
+  "offline-legacy-cpu-present=1",
+  "offline-key-events=1",
+  "sheng-aks=1",
+  "offline-hid-input=1",
+  "offline-hid-home=1",
+  "sheng-touch-hid=1",
+  # A fixed 60 Hz for the render server (drivers/GopFramebuffer): a work-loop tick stands in for the GOP scanout's missing
+  # vblank; with the generic 24 to 60 Hz range UniXNU-tb128fu's render server settled at 24 Hz.
+  "sheng-vsync=60",
+  "sheng-vsync-fixed=1",
+  # The kernel restarts into fastboot by itself with a warm reset that keeps the ramoops log (package/BootRamoops.c): this
+  # long after the log zone is mapped, after the third SpringBoard/backboardd crash, and 10 s (the default of
+  # pipa-panic-restart-after) after a panic. One CPU, 2026-10-23: launchd at +1 s, SpringBoard at +50 s, its first crash at +94 s.
+  "pipa-restart-after=240",
+  "pipa-restart-crashes=3",
+  # All eight cores ([payload.adt] cpu_regs, ArmCpu of drivers/ArmCpu's pipa branch, PSCI CPU_ON), as on UniXNU-tb128fu and
+  # UniXNU-sheng: every core sends itself an IPI from initCPU (XNU enables a core's IPIs only once it has taken one), and IPIs
+  # are software-pended SPIs, since SGIs do not arrive on these Qualcomm boards; without armcpu-spi-ipi-base ArmCpu takes the
+  # distributor's top eight INTIDs. The virtual timer is the standard INTID 27 here (DT timer PPIs 13, 14, 11, 12).
+  "sheng-smp=1",
+  "armcpu-self-ipi=1",
+  "armcpu-spi-ipi=1",
+  # Ask each CPU frequency domain (EPSS) for its top level (package/BootRamoops.c): the boot core ran at about 760 MHz.
+  "pipa-cpufreq=1",
+  # The touch controller (package/TouchProbe.cpp, Novatek NT36532 on QUP wrapper 0 SE4): every stage up to the point-report loop
+  # that feeds the HID input (sheng-touch-hid). Its rows go to the kernel log every 10 s; the first failing stage stops it.
+  "pipa-touch=5",
+  # The power and volume keys (package/Buttons.c): the PM8150 PON's and GPIO6's status over SPMI every 10 ms, read only, to the HID
+  # input's report 2 (power, volume up, volume down). Each change is logged.
+  "pipa-buttons=1",
+  # The Adreno 650 up to a non-secure GPU with its interrupt (package/GpuProbe.cpp): CX power, the GPU SMMU's clocks, the command
+  # DB, the GMU clocks at 200 MHz, the GMU's SMMU context, the GMU cold start with its HFI startup messages, the GX vote (305 MHz)
+  # and GPU_SET, the GPU's SMMU context, the A650 hw_init, the SQE, ring 0, CP_ME_INIT, a CP_MEM_WRITE read back, the zap shader
+  # through PAS 13 with CP_SET_SECURE_MODE(0), and the GPU interrupt (SPI 300): all passed on 2026-10-24. Then the device for
+  # user clients with two kernel rounds of the user-client path (mode 11), and the staged accelerator for Metal (mode 12).
+  "pipa-gpu=12",
+  # Turnip's options (GpuProbe.cpp metal()): GMEM or system memory per pass, Turnip's own choice ("nocb" is a no-op on the A650).
+  # Before APRIV the GMEM passes hung on CP_DRAW_INDX_OFFSET (UCHE_OOB_ACCESS); with it 40 scripted page turns over the home screen
+  # run at 40 to 54 frames a second while the UI moves (2026-10-24, E/P clusters), against 38 with "sysmem,nocb" (every pass in system
+  # memory). In one earlier "sysmem,nocb" round the render server stopped committing after the unlock swipe (7 command buffers, no
+  # crash, no GPU work outstanding); the next such round did not.
+  # pipa-turnip-debug=nocb is the driver's own default (GpuProbe.cpp); the room it took on the kernel command line
+  # (1000 bytes, DarwinBoot's limit) now holds the family withholding that keeps Core Animation off its Apple-only blur path
+  # (2026-10-25: the App Library page's full-screen pass went from 95 ms of GPU time to 2 ms, and the UI from 41 to 47 frames a second).
+  # Experiment 2026-10-25 evening: letting Core Animation see the Apple families again is slower, not faster: a pass
+  # went from 7.5 to 12.5 ms of GPU time and submit-to-retire from 9.3 to 18.1 ms (App Library windows, one round
+  # each, 2026-10-25). The withhold keeps the cheaper path. It is GpuProbe.cpp's default now (pipa-metal-withhold=none reports the
+  # families), and so is the GPU's top level, 670 MHz (GX_BW_PERF_VOTE level 7; pipa-gpu-perf=<1..7>): the plugin's scanout copy of a
+  # frame took 5 ms against 12 ms at 305 MHz (2026-10-24). Both arguments' 52 bytes went back to the command line.
+  # The GPU addon of the payload (the Metal plugin, Turnip, adrenoprobed; scripts/kernel-round.sh passes it) written into the Data
+  # volume and mounted before launchd starts; the name is UniXNU-sheng's.
+  "sheng-gpu-addon=1",
+  # The GPU hand-off: the Metal plugin copies each finished frame into the firmware frame buffer with the GPU. A refused offer or a
+  # failed copy falls back to the CPU copy (drivers/GopFramebuffer NativeLegacyDisplay.cpp).
+  "sheng-fb-gpu=1",
+]
+
+[payload.adt]
+tool = "scripts/make-pipa-adt.py"
+chip_id = "207"
+# XNU takes one contiguous range: DarwinBoot takes the first free run of the firmware's map that holds it. Android finds
+# 0xffc20000..0x27fffffff (6 GiB) free in the second bank, and the third bank (0x800000000, 8 GiB) has the firmware's own images
+# at its top (0x9ff...). 4 GiB (the iPad7,1's) landed at 0x10007c000 in the second bank. 7.75 GiB went to the third bank and the
+# kernel stopped after the blue entry bar (2026-10-24). That stop was osfmk/arm64/start.s running out of bootstrap tables, not
+# the 32 GiB base: the native 4 KiB pool held 14 L2 pages, 5.75 GiB uses 12, and a 7.75 GiB window needs 18 (it would have
+# stopped at a 4 GiB base too). patches/xnu/zzzz-bootstrap-table-pool.patch raises the pool to 34 pages, so 7.75 GiB is the
+# next thing to try here; all 16 GB still needs several ranges in XNU's pmap and VM start-up (HANDOFF-pipa-memory.md).
+owned_memory_size = "0x170000000"
+root_match_volume_uuid = "04769D26-2CA0-4825-B443-E2E5F88300F2"   # the OS volume of the same IPSW
+# All eight cores, boot CPU first: 0..0x300 Kryo 585 Silver (Cortex-A55), 0x400..0x600 Gold and 0x700 Gold Prime (Cortex-A77),
+# as two scheduler clusters, E (the A55s) and P (the A77s), under the Edge scheduler (make-pipa-adt.py cluster-type,
+# package/xnu-patches/native-smp-type-clusters.patch and ArmCpu's registration by type, all UniXNU-tb128fu's): on one cluster
+# UniXNU-tb128fu's render server committed 72 % of its frames from a little core. "0" keeps the boot CPU only (2026-10-23).
+cpu_regs = "0,0x100,0x200,0x300,0x400,0x500,0x600,0x700"
+packed_data_ramdisk = true
+ipad_identity = true
+unique_chip_id = "required"          # the platform seed is not stored in any repository

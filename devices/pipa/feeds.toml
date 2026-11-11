@@ -1,0 +1,55 @@
+# Sources of the pipa device, pinned. Format 1 kept the drivers as submodules of UniXNU-pipa; format 2 names them here
+# at the same commits (xVanTuring/UniXNU-pipa cdb3d62, `git submodule status`), under their catalog component IDs.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+
+# Shared SM8250 / SM8250-AC (kona) support: CPU topology, GICv3, timer, controller register blocks. Its XNU series is for
+# the arm64 layer; the arm64e port this board needs is in patches/xnu-12377/soc.
+[[source]]
+name = "sm8250"
+kind = "soc"
+git = "https://github.com/FFT-infra/UniXNU-sm8250-common"
+commit = "a67a9bf33e44b29c275d13225633ec3475c38461"
+
+# Branch pipa of the forks, as UniXNU-pipa pins them.
+[[source]]
+name = "ArmCpu"
+kind = "driver"
+git = "https://github.com/xVanTuring/ArmCpu"
+commit = "a9c4585dbb1b75b8594dd0ae54962cc59969d98f"
+
+# PipaUfs is the SM8250 fork of ShengUfs (NativeUfs.cpp with NATIVE_UFS_SM8250).
+[[source]]
+name = "ShengUfs"
+kind = "driver"
+git = "https://github.com/xVanTuring/PipaUfs"
+commit = "5c64c0125e0d1855729a2d0095c03514b9cc7030"
+
+[[source]]
+name = "GopFramebuffer"
+kind = "driver"
+git = "https://github.com/xVanTuring/GopFramebuffer"
+commit = "14c7dffb09703e5749bb89af2fdd33ebaf8aa659"
+
+# PipaNovatekTouch is the fork of ShengNovatekTouch for this board's NT36532 firmware reports.
+[[source]]
+name = "ShengNovatekTouch"
+kind = "driver"
+git = "https://github.com/xVanTuring/PipaNovatekTouch"
+commit = "0025115b7125b53e582f7c6934bb27610d001647"
+
+[[source]]
+name = "ShengHidInput"
+kind = "driver"
+git = "https://github.com/UniXNU/ShengHidInput"
+commit = "5f3a37cec0c3fc4234b10726b25489a55f0d77ef"
+
+[[source]]
+name = "ArmSmmu4K"
+kind = "kit"
+git = "https://github.com/xVanTuring/ArmSmmu4K"
+commit = "6d4441db4b850cfd5a265a5bec59ac629a8f78cd"
+
+# Not selectable in format 2 yet, so not listed as sources: xVanTuring/Adreno650 01db67e0 (the A650 fork of Adreno740,
+# no catalog component) and xVanTuring/AdrenoMetal 2ff4be9e (its catalog entry depends on Adreno740 and Sm8550Platform).
+# docs/board-migration.md, gap G3.

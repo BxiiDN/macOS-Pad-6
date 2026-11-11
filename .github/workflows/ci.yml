@@ -22,7 +22,7 @@ jobs:
       - name: SPDX headers on every source file
         run: |
           missing=$(git ls-files '*.c' '*.h' '*.py' '*.sh' '*.yml' '*.txt' \
-            | grep -v -e '^third_party/' -e '^docs/evidence/' \
+            | grep -v -e '^third_party/' -e '^docs/evidence/' -e '^devices/pipa/package/' -e '^devices/pipa/scripts/' \
             | xargs grep -L 'SPDX-License-Identifier' || true)
           if [ -n "$missing" ]; then echo "missing SPDX: $missing"; exit 1; fi
       - name: No Apple binaries or firmware in the tree

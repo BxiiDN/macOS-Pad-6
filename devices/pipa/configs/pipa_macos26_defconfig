@@ -1,0 +1,20 @@
+# Kernel configuration of the macOS Tahoe 26.5 kernel for pipa (SM8250), applied after the arm64e common fragment,
+# soc:configs/sm8250.config and os:configs/macos.config. CONFIG_XNU_<NAME> becomes XNU_<NAME> for the kernel build.
+#
+# The generic arm64e path on this board's cores: ArmDTPlatform, ArmCpu (pipa branch), the source corecrypto and pthread
+# providers and the generic timer, from the arm64e fragment. The ARMv8.2 layer (null PAC and the FGE emulator) is the
+# device patch series; it has no switch of its own here, because without it this kernel cannot run on SM8250 at all.
+#
+# Not selected, with the reason in docs/kernel-build.md: storage (NATIVE_UFS: the arm64e ShengUfs recipe builds sheng's
+# SM8550 source storage), the owner root chain that needs it, the display (NATIVE_LEGACY_DISPLAY: its recipe needs the
+# macOS 26.5 class fixtures) and the GPU (NATIVE_ADRENO: no A650 catalog component).
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+
+CONFIG_XNU_BUILD_ARCHIVES=y
+# The panic text on the frame buffer from the DT panic region, as UniXNU-pipa's kernel (there is no UART on pipa).
+CONFIG_XNU_DT_PANIC_REGION=y
+# The macOS kernel collection keeps its linked addresses; the native kernel joins it with chained fixups, as on
+# UniXNU-sheng's macOS kernel.
+CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
+CONFIG_XNU_ARMVIRT_PLATFORM=n

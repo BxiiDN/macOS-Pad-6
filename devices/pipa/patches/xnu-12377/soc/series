@@ -1,0 +1,15 @@
+# SM8250 SoC layer for the arm64e (xnu-12377) kernel, applied between UniXNU's arm64e series and the OS series.
+#
+# UniXNU-sm8250-common a67a9bf carries two patches written for the arm64 layer; neither applies on top of the arm64e one
+# (measured: board_config.h at line 134, sched_clutch.c hunk 2). Their arm64e equivalents:
+#  - native-smp-secondary.patch: the start.s hunk alone. The arm64e layer's bcm2837-machine-config.patch already sets
+#    MAX_CPUS 8 and MAX_CPU_CLUSTERS 2, which was the other half. This is UniXNU-sm8550-common 97665e2's arm64e copy,
+#    unchanged: SM8250 numbers its cores in MPIDR Affinity1 as SM8550 does.
+#  - the cluster preferences of native-smp-type-clusters.patch are xnu-12377's scheduler API; they are in the device
+#    series (zzyf-pipa-amp.patch), after the OS series, as UniXNU-sheng places its own.
+# sheng-platform-power.patch (UniXNU-sm8550-common 97665e2, unchanged) is the bsd_init hook of the PMGR bridge. It does
+# nothing unless XNU_SHENG_PMGR is set, which this kernel does not set; it is here because UniXNU's macOS OS series is
+# written on top of it (without it 20 of the OS series' patches stop applying, measured).
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+sheng-platform-power.patch
+native-smp-secondary.patch

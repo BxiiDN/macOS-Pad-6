@@ -1,0 +1,210 @@
+# Board description of the Xiaomi Pad 6 (pipa, SM8250) in UniXNU format 2.
+#
+# Migrated from xVanTuring/UniXNU-pipa cdb3d62 (format 1; kept verbatim in
+# docs/evidence/board-migration/board-before.toml) following UniXNU's docs/porting/migration.md. The hardware values are
+# that port's: they name their public source there, and the memory banks and [userdata] were read from a tablet under
+# Android (android-devinfo, 2026-10-21). The migration moves them, it does not change them; docs/board-migration.md maps
+# every key from its old place to its new one.
+#
+# Default profile: macOS Tahoe 26.5 (macos-26.5-25F71, profiles/macos-26.5/unixnu of this repository, installed into the
+# UniXNU checkout by scripts/pipa-unixnu.sh). The iPadOS 17.7.11 port of UniXNU-pipa stays under its override below.
+# Nothing here has booted macOS: see docs/kernel-build.md for what the kernel step proves and what it does not.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+schema_version = 2
+
+[board]
+name = "pipa"
+soc = "SM8250"
+soc_source = "sm8250"
+os_profile = "macos-26.5-25F71"
+description = "Xiaomi Pad 6"
+kit = "pipa"
+
+# Android's userdata (sda34 on the UFS LUN 0, 106.6 GiB), from the tablet's GPT, which agrees with sysfs. The OS profile
+# names the windows. "unixnu build userdata" writes the image for it; flashing that image ERASES Android's data, and nothing
+# in this repository flashes.
+[userdata]
+first_lba = 0x293000
+last_lba = 0x1d387fa
+lba_bytes = 4096
+
+# The macOS 26.5 kernel: the generic CPU, interrupt, timer and platform expert path of the arm64e profile on this board's
+# cores. Storage, display, input and GPU are not selected yet: their arm64e recipes are SM8550's (ShengUfs builds the sheng
+# source storage under arm64e) or are not in the component catalog (Adreno650). docs/kernel-build.md.
+[kernel]
+defconfig = "pipa_macos26_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/macos.config"]
+# UniXNU-sm8250-common's series targets the arm64 (iPadOS 17) layer and does not apply on top of the arm64e one, so the
+# SoC layer of this kernel is patches/xnu-12377/soc (its arm64e port, plus the platform-power hook the macOS OS series
+# builds on); the device series after the OS one carries the ARMv8.2 layer (null PAC, FGE) and the Edge cluster defaults.
+patch_series = ["arch:patches/xnu/series", "device:patches/xnu-12377/soc/series", "os:patches/xnu/series", "device:patches/xnu-12377/series"]
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "component:ArmDTPlatform",
+  # xVanTuring/ArmCpu branch pipa (feeds.toml): all eight cores, IPIs as SPIs at the distributor's top eight INTIDs, and
+  # each core registered with its cluster type.
+  "component:ArmCpu",
+  "build-libpthread-kernel.py",
+]
+
+# The firmware is the Mu-Silicium pipa port (pipaPkg, Kona SM8250) of the uefi-pipa checkout, with UniXNU, the ramdisk
+# block device driver and DarwinBoot added. Unchanged from format 1.
+[firmware]
+config = "pipa"
+dsc = "Platforms/Xiaomi/pipaPkg/pipa.dsc"
+fd = "Build/pipaPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+preflight = ["scripts/check-pipa.py"]
+submodules = ["Binaries", "Common/Mu", "Common/Mu_OEM_Sample", "Silicium-ACPI", "Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl"]
+# Masks a GIC interrupt that has no handler instead of taking it forever (found on sheng with a leftover IPCC interrupt).
+patches = ["Resources/MuPatches/Gic-Spurious.patch"]
+packages = [
+  "{uefi}",
+  "{uefi}/Platforms/Xiaomi",
+  "{tree}/package",
+  "{tree}/drivers/DarwinBoot",
+  "{edk2}",
+  "{uefi}/Common/Mu",
+  "{uefi}/Common/Mu_OEM_Sample",
+  "{uefi}/Silicon/Qualcomm",
+  "{uefi}/Silicon/Silicium",
+  "{uefi}/Silicium-ACPI",
+  "{uefi}/Silicium-ACPI/Platforms/Xiaomi",
+  "{uefi}/Silicium-ACPI/Silicon/Qualcomm",
+]
+
+[firmware.defines]
+ENABLE_SECUREBOOT = "1"
+MEMORY_PROTECTION = "TRUE"
+SHIP_MODE = "FALSE"
+BUILDID_STRING = "pipa-research"
+
+# Image parameters come from Resources/Configs/pipa.toml of the firmware checkout. Its Resources/DTBs/pipa.dtb already
+# carries /reserved-memory/cont_splash_region@9c000000, so no [[bootimg.dtb_node]] is added.
+
+[payload]
+volume = "PIPAESP"
+# The macOS 26.5 kernel collection is 137 MiB (kernelcache-j274ap-25F71 evidence) plus the native kernel.
+size_mib = 200
+loader = "firmware"
+title = "macOS Tahoe 26.5 kernel (pipa, not booted yet)"
+# The reference tablet of UniXNU-pipa (upgraded to 16 GB): banks 0x80000000+0x37700000, 0xc0000000+0x1c0000000 and
+# 0x800000000+0x200000000. XNU takes dram-base and dram-size as one range, so it spans from the base to the end of the last
+# bank. Equal to the memory node of dts/pipa.dts, which the ADT generator checks.
+dram_size = "0x980000000"
+panic_screen = true
+# Arguments this kernel reads. ArmCpu of the pipa branch still reads sheng-smp (upstream renamed it smp). The timebase of
+# SM8250 is 19.2 MHz; macOS user space assumes 24 MHz, which timebase-hz gives it (macOS OS series). fge=1 is the default of
+# the instruction emulator (kernel/xnu), named here so the command line shows it; fge=0 turns it off.
+kernel_args = [
+  "debug=0x14e",
+  "kt_fixed_zones=120",
+  "-no_slto_panic",
+  "armcpu-diagnostics=1",
+  "sheng-smp=1",
+  "armcpu-self-ipi=1",
+  "armcpu-spi-ipi=1",
+  "vc-text=1",
+  "exec-log=1",
+  "timebase-hz=24000000",
+  "fge=1",
+]
+
+[payload.adt]
+# T8103, the chip of Macmini9,1 (the OS profile's identity). A software identity seed, not an Apple silicon ID.
+chip_id = "8103"
+# 5.75 GiB of the second bank, the window UniXNU-pipa's kernel ran with (2026-10-24); the 4 KiB bootstrap tables map at
+# most 6 GiB.
+owned_memory_size = "0x170000000"
+packed_data_ramdisk = true
+unique_chip_id = "required"          # the platform seed is not stored in any repository
+
+[device_tree]
+source = "device:dts/pipa.dts"
+include_dirs = ["soc:dts"]
+
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
+
+[adt]
+
+[adt.chosen.u32]
+# This SoC has no CTRR: kernel text stays writable by hardware, which XNU must be told (iBoot writes this on Apple SoCs).
+"kernel-ctrr-to-be-enabled" = 0
+
+[adt.defaults.u32]
+# Suspend/resume is not implemented for this board.
+"sleep-disabled" = 1
+# No Apple PMGR or SEP: report a virtual platform, so AMFI does not wait for an ApplePMGRNub (UniXNU-sheng's macOS value).
+"vmm-present" = 1
+
+[package]
+unixnu = "../../third_party/UniXNU"
+
+[package.defconfig]
+"macos-26.5-25F71" = "pipa_macos26_defconfig"
+"ipados-17.7.11-21H461" = "pipa_defconfig"
+
+# ---------------------------------------------------------------------------------------------------------------------
+# iPadOS 17.7.11: UniXNU-pipa's port as it ran on the tablet (2026-10-24), moved to format 2. The values are format 1's;
+# components carry their catalog names with pipa's forks pinned in feeds.toml. This override resolves; it is not built by
+# this repository (its archive plan needs inputs kept outside Git: UniXNU-tb128fu's storage ABI audit and owner key, and
+# the Adreno 650 driver, which no catalog component provides yet). docs/board-migration.md lists each gap.
+# ---------------------------------------------------------------------------------------------------------------------
+[os_overrides."ipados-17.7.11-21H461"]
+remove = ["adt.defaults.u32.vmm-present"]
+
+[os_overrides."ipados-17.7.11-21H461".components]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "ShengUfs", "VirtioMmioBlock", "RamBlock", "GopFramebuffer", "ShengHidInput", "ShengNovatekTouch", "QcomGeniSpi", "AppleKeyStoreState", "ArmSmmu4K", "AdrenoFirmware", "AdrenoPM4", "XnuPrelink", "DarwinBoot", "VerifiedRoot"]
+
+[os_overrides."ipados-17.7.11-21H461".kernel]
+defconfig = "pipa_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "component:ArmDTPlatform",
+  "component:ArmCpu",
+  "component:SoftwareAES",
+  # PipaUfs (the SM8250 host) as ShengUfs. Format 1 ran "build-arm-driver.py PipaUfs --sm8250" of an older UniXNU, which
+  # defined NATIVE_UFS_SM8250; UniXNU 3fd6a3c's recipe has no such switch (docs/board-migration.md, gap G2).
+  "component:ShengUfs",
+  "component:VirtioMmioBlock",
+  "build-arm-driver.py VirtioMmioBlock --verified-root",
+  "build-virtio-mmio-bindings.py --component VirtioMmioBlock --directory build/virtio-mmio-block-verified",
+  "component:RamBlock",
+  "build-virtio-mmio-bindings.py --component RamBlock --directory build/ram-block",
+  "build-software-aes-bindings.py",
+  "build-libpthread-kernel.py",
+  "build-link-stubs.py",
+  "build-platform-power.py",
+  "build-verified-root-key.py --pin 70a5ea346d2d779a7ef43eb4ed8b17f54488e160d8c2a6d6420969664e3ae798",
+  "component:GopFramebuffer",
+  "component:ShengHidInput",
+  "component:AppleKeyStoreState",
+  "build-gop-legacy-display.py",
+]
+
+[os_overrides."ipados-17.7.11-21H461".payload]
+size_mib = 192
+title = "pipa first boot: source 4K XNU to the panic screen"
+skip_setup_tool = "scripts/seed-data-skip-setup.py"
+skip_setup_args = ["--no-auto-dim", "--plain-framebuffer"]
+kernel_args = [
+  "-v", "serial=3", "debug=0x14e", "kt_fixed_zones=120", "armcpu-diagnostics=1", "sheng-pmgr=2", "-no_slto_panic",
+  "ml-timeout-lock-panic-scale=40", "native-ufs-root=1", "native-ufs-diagnostics=1", "sheng-data-persist=2", "-no_corpses",
+  "sheng-disable-jobs=com.apple.identityservicesd,com.apple.locationd,com.apple.CommCenter,com.apple.bluetoothd,com.apple.PerfPowerServices,com.apple.iomfb_fdr_loader",
+  "sheng-disable-watchdogd=1", "offline-mobile-graphics-load=1", "offline-legacy-register=1", "offline-legacy-phase=4",
+  "offline-legacy-gop=1", "offline-legacy-unit-scale=2", "offline-legacy-pm=1", "offline-legacy-validate=1",
+  "offline-legacy-transfer=1", "offline-legacy-cpu-present=1", "offline-key-events=1", "sheng-aks=1", "offline-hid-input=1",
+  "offline-hid-home=1", "sheng-touch-hid=1", "sheng-vsync=60", "sheng-vsync-fixed=1", "pipa-restart-after=240",
+  "pipa-restart-crashes=3", "sheng-smp=1", "armcpu-self-ipi=1", "armcpu-spi-ipi=1", "pipa-cpufreq=1", "pipa-touch=5",
+  "pipa-buttons=1", "pipa-gpu=12", "sheng-gpu-addon=1", "sheng-fb-gpu=1",
+]
+
+[os_overrides."ipados-17.7.11-21H461".payload.adt]
+chip_id = "207"
+owned_memory_size = "0x170000000"
+root_match_volume_uuid = "04769D26-2CA0-4825-B443-E2E5F88300F2"

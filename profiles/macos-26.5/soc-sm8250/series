@@ -1,8 +1,0 @@
-# SM8250 SoC XNU series for pipa: until a UniXNU-sm8250-common repository exists, the two
-# generic patches of UniXNU-sm8550-common 97665e2 (BSD-2-Clause-Patent, UniXNU contributors),
-# copied unchanged. Both apply to pipa as they are:
-#  - native-smp-secondary: pipa numbers its cores in MPIDR Affinity1 (0x000..0x700), as SM8550 does
-#  - sheng-platform-power: the PMGR bridge that UniXNU-pipa already uses (sheng-pmgr=2)
-# SPDX-License-Identifier: BSD-2-Clause-Patent
-sheng-platform-power.patch
-native-smp-secondary.patch
