@@ -75,7 +75,7 @@ Uji negatif: mengubah `TB_SE_BASE` ke `0x994000` membuat pemeriksaan gagal (`MIS
 - **ML**: mainline pipa tidak mengaktifkan MDSS/DSI; Linux pipa hanya memakai `simple-framebuffer` dari splash bootloader.
 - **UP**: iPadOS di pipa menggambar ke frame buffer firmware (GOP uefi-pipa) dengan salinan CPU (tanpa vsync, tearing), atau salinan GPU. `MdssProbe.cpp` hanya membaca.
 - **Temuan baru (ML)**: kecerahan dikendalikan **KTZ8866** di I2C11, alamat `0x11`. Repo kini punya model board-nya (`package/BacklightBoard.h`: fakta + urutan register init dan kecerahan 11-bit, host test `BacklightBoardTests.c`), tetapi belum ada driver GENI I2C atau backlight di kernel, dan belum ada yang ditulis ke chip.
-- **Kebutuhan macOS (G5)**: frame buffer bootloader cukup untuk tahap awal (UniXNU `GopFramebuffer`); kecerahan butuh driver GENI I2C (QUP1 SE3) + KTZ8866; display penuh butuh DPU + dual DSI + PHY 7 nm, yang belum ada di Linux mainline untuk panel ini.
+- **Kebutuhan macOS (G5)**: frame buffer bootloader cukup untuk tahap awal (UniXNU `GopFramebuffer`); kecerahan butuh driver GENI I2C (QUP1 SE3) + KTZ8866 (inti portabel ada: `GeniI2cCore.h`, `Ktz8866Driver.h`; shim kernel belum); display penuh butuh DPU + dual DSI + PHY 7 nm, yang belum ada di Linux mainline untuk panel ini.
 
 ## 5. Touchscreen dan input
 
@@ -93,6 +93,18 @@ Uji negatif: mengubah `TB_SE_BASE` ke `0x994000` membuat pemeriksaan gagal (`MIS
 - **Frekuensi CPU**: EPSS (`pipa-cpufreq=1` UniXNU-pipa meminta level tertinggi; **UP**).
 - Board menulis `sleep-disabled = 1`: suspend/resume belum ada.
 
-## 7. Kebutuhan driver G2–G6
+## 7. Sumber di luar mainline: DT Android Xiaomi dan sumber driver Linux
+
+Yang tidak dideskripsikan mainline untuk pipa dicek terhadap DT Android yang dipublikasikan Xiaomi (**VND**: `MiCode/kernel_devicetree`, cabang `pipa-t-oss`, `623dd5bf821e`), dibaca sebagai sumber DTS oleh `tools/hw/dts_source.py` (60 berkas vendor terbaca; berkas itu tidak bisa dikompilasi sendiri karena butuh header kernel vendor). `scripts/pipa_hw.py vendor` membandingkan 41 fakta:
+
+- **Panel** `dsi_m82_36_02_0a` (TM, `mi,panel-id` `0x4D383241 0x00360200`) dan `dsi_m82_42_02_0b` (CSOT, `… 0x00420200`), timing identik: dual DSI (ctrl/PHY 0+1) D-PHY 4 lane, mode video non-burst sync events, RGB888, DSC 1.1 (slice 450×20, 2 slice per paket, 8 bpc, 8 bpp), 900×2880 per DSI pada 120 Hz, h 2/46/100, v 2/214/26, bit clock lane 1.007.032.320 Hz, topologi 2/2/2, timing PHY 14 byte, ukuran 148,0×236,7 mm, reset `<0 10> <1 3> <0 3> <1 15>`, dfps 120/144/90/60/50/48/30 (porch VFP), status DCS `0x0A` = `0x9D`, ESD TLMM 51/55, TE TLMM 66, DVDD 1,3 V lewat TLMM 36/13, bias ±5,5 V lewat TLMM 130/131 (ramp 233 µs). Model: `package/PanelBoard.h`.
+- **Touch** `novatek,NVT-ts-spi` di `qupv3_se4_spi` (`0x990000`), IRQ TLMM 39 (rising), 9,6 MHz, pin 8–10 + CS 11 fungsi `qup4` 6 mA, firmware per pembuat panel (0x42 → `novatek_nt36532_m82_fw_csot.bin`, 0x36 → `…_tm.bin`); `TouchBoard.h`.
+- **Backlight** `ktz,ktz8866@11` di `qupv3_se11_i2c` (`0xa8c000`), HWEN TLMM 139, ENP/ENN 130/131, panel-id TLMM 30. Compatible vendor berbeda dari mainline (`kinetic,ktz8866`); alamat dan pin sama.
+
+Konstanta driver dicek terhadap sumber driver Linux pada commit mainline yang sama (`pipa_hw.py drivers`, 80 fakta): peta register, bit field, opcode dan tabel SCL GENI (`geni-se.h`, `qcom-geni-se.c`, `i2c-qcom-geni.c`, `i2c.h`) untuk `GeniI2cCore.h`, dan peta register KTZ8866 (`ktz8866.c`) untuk `BacklightBoard.h`.
+
+Kecocokan dengan pohon vendor dan sumber driver adalah bukti statis tentang konfigurasi Android dan konstanta, bukan bukti bahwa driver bekerja di tablet.
+
+## 8. Kebutuhan driver G2–G6
 
 Rinciannya ada di [board-migration.md](board-migration.md#kebutuhan-driver-g2g6).

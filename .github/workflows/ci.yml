@@ -71,7 +71,9 @@ jobs:
           clang --version | head -1
           llvm-mc --version | head -2
       - name: UniXNU submodule (DarwinBoot's MemoryWindow.h for tests/hw/test_pipa_memory.py)
-        run: git submodule update --init --depth 1 third_party/UniXNU
+        run: |
+          git submodule update --init --depth 1 third_party/UniXNU
+          git -C third_party/UniXNU submodule update --init --depth 1 drivers/DarwinBoot
       - name: Fetch XNU at the pinned revision (patch check only)
         run: |
           git init -q "$RUNNER_TEMP/xnu"
@@ -162,5 +164,6 @@ jobs:
       - name: Adreno 650 driver fork, its host tests (G3)
         run: |
           git submodule update --init --depth 1 third_party/UniXNU
+          git -C third_party/UniXNU submodule update --init --depth 1 kits/AdrenoPM4 kits/AdrenoFirmware
           python3 scripts/test_adreno650.py --json "adreno650-host-$(uname -m).json"
 

@@ -186,7 +186,8 @@ def main():
     args = ap.parse_args()
     check_feeds_comment()
     if not (KITS / "AdrenoPM4/AdrenoPM4.c").is_file():
-        sys.exit("needs the UniXNU submodule: git submodule update --init --depth 1 third_party/UniXNU")
+        sys.exit("needs UniXNU's AdrenoPM4 kit: git submodule update --init --depth 1 third_party/UniXNU && "
+                 "git -C third_party/UniXNU submodule update --init --depth 1 kits/AdrenoPM4")
     cxx = os.environ.get("CXX") or shutil.which("clang++") or "c++"
     cc = os.environ.get("CC") or shutil.which("clang") or "cc"
     work = args.work.resolve()
