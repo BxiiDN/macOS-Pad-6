@@ -70,9 +70,11 @@ VENDOR_GIT = "https://github.com/MiCode/kernel_devicetree"
 VENDOR_BRANCH = "pipa-t-oss"
 VENDOR_COMMIT = "623dd5bf821eaa865dc7296b33f0a1368218c77d"
 # In include order: pipa-sm8250.dtsi includes pipa-pinctrl.dtsi, then xiaomi-sm8250-common.dtsi, then its own body.
-VENDOR_FILES = ["qcom/kona-qupv3.dtsi", "qcom/kona-sde-display.dtsi", "qcom/dsi-panel-m82-36-02-0a-video.dtsi",
-                "qcom/dsi-panel-m82-42-02-0b-video.dtsi", "qcom/pipa-pinctrl.dtsi", "qcom/xiaomi-sm8250-common.dtsi",
-                "qcom/pipa-sm8250.dtsi"]
+VENDOR_FILES = ["qcom/kona-qupv3.dtsi", "qcom/pm8150b.dtsi", "qcom/kona-pmic-overlay.dtsi", "qcom/kona-sde-display.dtsi",
+                "qcom/dsi-panel-m82-36-02-0a-video.dtsi", "qcom/dsi-panel-m82-42-02-0b-video.dtsi", "qcom/pipa-pinctrl.dtsi",
+                "qcom/xiaomi-sm8250-common.dtsi", "qcom/pipa-sm8250.dtsi"]
+# #included inside pipa_batterydata (pipa-sm8250.dtsi); the source reader skips #include, so it is read on its own.
+VENDOR_BATTERY = "qcom/fg-gen4-batterydata-pipa-sunwoda-8840mah.dtsi"
 VENDOR_PANELS = {"PNL_ID_TM": "dsi_m82_36_02_0a_dual_dphy_video", "PNL_ID_CSOT": "dsi_m82_42_02_0b_dual_dphy_video"}
 BINDINGS = {   # provider compatible -> dt-bindings header of its cell values
     "qcom,gcc-sm8250": ["clock/qcom,gcc-sm8250.h"],
@@ -117,8 +119,8 @@ def fetch_vendor(dest):
     dest = Path(dest)
     if (dest / ".git").exists() and run(["git", "-C", dest, "rev-parse", "HEAD"]).strip() == VENDOR_COMMIT:
         sparse = dest / ".git/info/sparse-checkout"
-        want = "\n".join("/" + f for f in VENDOR_FILES) + "\n"
-        if not all(f"/{f}" in sparse.read_text().split() for f in VENDOR_FILES):   # a checkout from before the list grew
+        want = "\n".join("/" + f for f in VENDOR_FILES + [VENDOR_BATTERY]) + "\n"
+        if not all(f"/{f}" in sparse.read_text().split() for f in VENDOR_FILES + [VENDOR_BATTERY]):   # a checkout from before the list grew
             sparse.write_text(want)
             run(["git", "-C", dest, "read-tree", "-mu", "HEAD"])
         return dest
@@ -127,7 +129,7 @@ def fetch_vendor(dest):
     run(["git", "init", "-q", dest])
     run(["git", "-C", dest, "remote", "add", "origin", VENDOR_GIT])
     run(["git", "-C", dest, "config", "core.sparseCheckout", "true"])
-    (dest / ".git/info/sparse-checkout").write_text("\n".join("/" + f for f in VENDOR_FILES) + "\n")
+    (dest / ".git/info/sparse-checkout").write_text("\n".join("/" + f for f in VENDOR_FILES + [VENDOR_BATTERY]) + "\n")
     run(["git", "-C", dest, "fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", VENDOR_COMMIT])
     run(["git", "-c", "advice.detachedHead=false", "-C", dest, "checkout", "-q", "FETCH_HEAD"])
     return dest
@@ -645,8 +647,9 @@ def struct_rows(path, name, *headers):
         tok = tok.strip()
         if tok.startswith('"'):
             return tok[1:-1]
-        if re.fullmatch(r"(0x[0-9a-fA-F]+|\d+)[uUlL]*", tok):
-            return _int(tok)
+        m = re.fullmatch(r"\(?\s*(-?)\s*((?:0x[0-9a-fA-F]+|\d+)[uUlL]*)\s*\)?", tok)
+        if m:
+            return -_int(m.group(2)) if m.group(1) else _int(m.group(2))
         for h in (path, *headers):
             try:
                 return macro(h, tok)
@@ -856,10 +859,118 @@ def vendor_facts(vendor):
         lambda: [macro(L, n) for n in ("BKL_GPIO_ENABLE", "BKL_GPIO_VDDPOS", "BKL_GPIO_VDDNEG", "BKL_GPIO_PANELID")],
         "ktz8866@11 ktz8866,hwen/enp/enn/panelid-gpio",
         lambda: [gpio(ktz(), f"ktz8866,{n}-gpio") for n in ("hwen", "enp", "enn", "panelid")])
+    power_facts(src, Source.load(Path(vendor) / VENDOR_BATTERY), add, gpio, pins)
     for r in rows:
         bad = any(isinstance(r[k], str) and r[k].startswith("ERROR") for k in ("repo", "vendor"))
         r["result"] = "error" if bad else ("match" if r["repo"] == r["vendor"] else "MISMATCH")
     return rows
+
+
+def power_facts(src, battery, add, gpio, pins):
+    """package/PowerSupplyBoard.h (and NativeBatteryBoard.h's PPIDs) against the vendor PMIC, charger, gauge, charge
+    pump and battery profile nodes."""
+    S, B = PKG / "PowerSupplyBoard.h", PKG / "NativeBatteryBoard.h"
+    fg = lambda: src.label("pm8150b_fg")
+    chg = lambda: src.label("pm8150b_charger")
+    profile = lambda: next(iter(battery.root.children.values()))
+    where = "(pm8150b.dtsi, pipa-sm8250.dtsi)"
+    add("power", "PMIC of the gauge and charger (SPMI USID)", "package/PowerSupplyBoard.h PS_PMIC_USID",
+        lambda: [macro(S, "PS_PMIC_USID"), macro(S, "PS_PMIC_USID")], f"pm8150b_fg / pm8150b_charger parent reg {where}",
+        lambda: [fg().parent.cells("reg")[0], chg().parent.cells("reg")[0]])
+    fg_regs = ("PS_FG_SOC", "PS_FG_INFO", "PS_FG_RRADC", "PS_FG_MEMIF")
+    add("power", "gauge peripherals (FG gen4)", "package/PowerSupplyBoard.h PS_FG_*",
+        lambda: [[macro(S, n), macro(S, "PS_PERIPH_SIZE")] for n in fg_regs], f"pm8150b_fg children reg {where}",
+        lambda: sorted(c.u32s("reg") for c in fg().children.values()))
+    add("power", "gauge PPIDs read by NativeBattery", "package/NativeBatteryBoard.h BAT_PPID_FG_*",
+        lambda: [macro(B, n) for n in ("BAT_PPID_FG_SOC", "BAT_PPID_FG_INFO", "BAT_PPID_FG_RRADC", "BAT_PPID_FG_MEMIF")],
+        f"(USID << 8) | (pm8150b_fg child reg >> 8) {where}",
+        lambda: sorted(fg().parent.cells("reg")[0] << 8 | c.u32s("reg")[0] >> 8 for c in fg().children.values()))
+    smb = {"chgr": "PS_SMB_CHGR", "dcdc": "PS_SMB_DCDC", "batif": "PS_SMB_BATIF", "usb": "PS_SMB_USB", "dc": "PS_SMB_DC",
+           "typec": "PS_SMB_TYPEC", "misc": "PS_SMB_MISC"}
+    add("power", "charger peripherals (SMB5)", "package/PowerSupplyBoard.h PS_SMB_*",
+        lambda: [[k, macro(S, v)] for k, v in smb.items()], f"pm8150b_charger qcom,<name>@ children reg {where}",
+        lambda: sorted(([n.split(",")[-1].split("@")[0], c.u32s("reg")[0]] for n, c in chg().children.items()
+                        if "reg" in c.props), key=lambda r: r[1]))
+    add("power", "charger PPIDs read by NativeBattery", "package/NativeBatteryBoard.h BAT_PPID_SMB_*",
+        lambda: [macro(B, n) for n in ("BAT_PPID_SMB_CHGR", "BAT_PPID_SMB_DCDC", "BAT_PPID_SMB_BATIF", "BAT_PPID_SMB_USBIN",
+                                       "BAT_PPID_SMB_MISC")],
+        f"(USID << 8) | (chgr, dcdc, batif, usb, misc reg >> 8) {where}",
+        lambda: [chg().parent.cells("reg")[0] << 8 | chg().child(f"qcom,{n}").u32s("reg")[0] >> 8
+                 for n in ("chgr", "dcdc", "batif", "usb", "misc")])
+    add("power", "gauge and charger enabled", "package/PowerSupplyBoard.h (PM8150B gauge and SMB5 in use)",
+        lambda: [True, True], f"pm8150b_fg, pm8150b_charger status {where}", lambda: [fg().enabled(), chg().enabled()])
+    add("power", "charger limits (ICL, FCC, FV, non-FFC FV, DC ICL)", "package/PowerSupplyBoard.h PS_USB_ICL_UA..PS_DC_ICL_UA",
+        lambda: [macro(S, n) for n in ("PS_USB_ICL_UA", "PS_FCC_MAX_UA", "PS_FV_MAX_UV", "PS_NON_FFC_FV_MAX_UV", "PS_DC_ICL_UA")],
+        "&pm8150b_charger qcom,usb-icl-ua, fcc-max-ua, fv-max-uv, non-fcc-fv-max-uv, dc-icl-ua (pipa-sm8250.dtsi)",
+        lambda: [chg().u32(p) for p in ("qcom,usb-icl-ua", "qcom,fcc-max-ua", "qcom,fv-max-uv", "qcom,non-fcc-fv-max-uv",
+                                        "qcom,dc-icl-ua")])
+    add("power", "charger recharge, termination, JEITA band", "package/PowerSupplyBoard.h PS_AUTO_RECHARGE_SOC, PS_CHG_*",
+        lambda: [macro(S, "PS_AUTO_RECHARGE_SOC"), -400, macro(S, "PS_CHG_WARM_DECIC"), macro(S, "PS_CHG_COOL_DECIC")],
+        "&pm8150b_charger qcom,auto-recharge-soc, chg-term-current-ma, chg-warm-th, chg-cool-th",
+        lambda: [chg().u32("qcom,auto-recharge-soc"), chg().cells("qcom,chg-term-current-ma")[0],
+                 chg().u32("qcom,chg-warm-th"), chg().u32("qcom,chg-cool-th")])
+    add("power", "charger termination current (repository)", "package/PowerSupplyBoard.h PS_CHG_TERM_MA",
+        lambda: c_eval("PS_CHG_TERM_MA", c_defines(S.read_text())), "&pm8150b_charger qcom,chg-term-current-ma",
+        lambda: chg().cells("qcom,chg-term-current-ma")[0])
+    add("power", "VBUS disable GPIO", "package/PowerSupplyBoard.h PS_GPIO_VBUS_DISABLE",
+        lambda: macro(S, "PS_GPIO_VBUS_DISABLE"), "&pm8150b_charger vbus-disable-gpio", lambda: gpio(chg(), "vbus-disable-gpio"))
+    add("power", "gauge thresholds (cutoff, empty mV; cutoff mA; term mA)", "package/PowerSupplyBoard.h PS_FG_*",
+        lambda: [macro(S, "PS_FG_CUTOFF_MV"), macro(S, "PS_FG_EMPTY_MV"), macro(S, "PS_FG_CUTOFF_MA"),
+                 c_eval("PS_FG_SYS_TERM_MA", c_defines(S.read_text())), c_eval("PS_FG_FFC_SYS_TERM_MA", c_defines(S.read_text()))],
+        "&pm8150b_fg qcom,fg-cutoff-voltage, fg-empty-voltage, fg-cutoff-current, fg-(ffc-)sys-term-current",
+        lambda: [fg().u32("qcom,fg-cutoff-voltage"), fg().u32("qcom,fg-empty-voltage"), fg().u32("qcom,fg-cutoff-current"),
+                 fg().cells("qcom,fg-sys-term-current")[0], fg().cells("qcom,fg-ffc-sys-term-current")[0]])
+    add("power", "gauge and charger use the pipa battery profile", "package/PowerSupplyBoard.h (one profile)",
+        lambda: ["&pipa_batterydata", "&pipa_batterydata"], "qcom,battery-data of both",
+        lambda: [fg().cells("qcom,battery-data")[0], chg().cells("qcom,battery-data")[0]])
+    add("power", "battery type and nominal capacity", "package/PowerSupplyBoard.h PS_BATT_TYPE, PS_BATT_MAH; NativeBatteryBoard.h BAT_DESIGN_MAH",
+        lambda: ["M82_sunwoda_8840mah", macro(S, "PS_BATT_MAH"), macro(B, "BAT_DESIGN_MAH")],
+        f"{VENDOR_BATTERY} qcom,battery-type, nom-batt-capacity-mah (x2)",
+        lambda: [profile().string("qcom,battery-type"), profile().u32("qcom,nom-batt-capacity-mah"),
+                 profile().u32("qcom,nom-batt-capacity-mah")])
+    add("power", "battery maximum voltage, fast charge, ID, beta", "package/PowerSupplyBoard.h PS_BATT_*",
+        lambda: [macro(S, n) for n in ("PS_BATT_MAX_UV", "PS_BATT_FASTCHG_MA", "PS_BATT_ID_KOHM", "PS_BATT_BETA")],
+        f"{VENDOR_BATTERY} max-voltage-uv, fastchg-current-ma, batt-id-kohm, battery-beta",
+        lambda: [profile().u32(p) for p in ("qcom,max-voltage-uv", "qcom,fastchg-current-ma", "qcom,batt-id-kohm",
+                                            "qcom,battery-beta")])
+    add("power", "JEITA too hot / too cold (0.1 C)", "package/PowerSupplyBoard.h PS_JEITA_TOO_HOT/COLD_DECIC",
+        lambda: [c_eval("PS_JEITA_TOO_HOT_DECIC", c_defines(S.read_text())), c_eval("PS_JEITA_TOO_COLD_DECIC", c_defines(S.read_text()))],
+        f"{VENDOR_BATTERY} qcom,jeita-too-hot, -too-cold",
+        lambda: [profile().cells("qcom,jeita-too-hot")[0], profile().cells("qcom,jeita-too-cold")[0]])
+    for name, prop in (("ps_jeita_fcc", "qcom,jeita-fcc-ranges"), ("ps_jeita_fv", "qcom,jeita-fv-ranges")):
+        add("power", f"JEITA table {prop[11:]}", f"package/PowerSupplyBoard.h {name}",
+            lambda n=name: [[int(v) for v in row] for row in struct_rows(S, n)], f"{VENDOR_BATTERY} {prop}",
+            lambda p=prop: [profile().cells(p)[i:i + 3] for i in range(0, len(profile().cells(p)), 3)])
+    pump = lambda: src.label("qupv3_se16_i2c").child("bq2597x-standalone")
+    add("power", "charge pump bus, address, enabled", "package/PowerSupplyBoard.h PS_CP_SE_BASE, PS_CP_ADDR",
+        lambda: [macro(S, "PS_CP_SE_BASE"), "ti,bq2597x-standalone", macro(S, "PS_CP_ADDR"), True],
+        "qupv3_se16_i2c reg (kona-qupv3.dtsi), bq2597x-standalone@66 compatible, reg, status",
+        lambda: [src.label("qupv3_se16_i2c").u32s("reg")[0], pump().string("compatible"), pump().u32("reg"),
+                 src.label("qupv3_se16_i2c").enabled() and pump().enabled()])
+    add("power", "charge pump interrupt (TLMM, flags) and pin", "package/PowerSupplyBoard.h PS_CP_IRQ_GPIO, _FLAGS, _PIN_MA",
+        lambda: [["&tlmm"], [macro(S, "PS_CP_IRQ_GPIO"), macro(S, "PS_CP_IRQ_FLAGS")],
+                 [[macro(S, "PS_CP_IRQ_GPIO")], "gpio", macro(S, "PS_CP_PIN_MA"), True]],
+        "bq2597x-standalone@66 interrupt-parent, interrupts; bq2597x_master_int_default (pipa-pinctrl.dtsi)",
+        lambda: [pump().cells("interrupt-parent"), pump().u32s("interrupts"),
+                 [pins(src.label("bq2597x_master_int_default")),
+                  src.label("bq2597x_master_int_default").child("mux").string("function"),
+                  src.label("bq2597x_master_int_default").child("config").u32("drive-strength"),
+                  src.label("bq2597x_master_int_default").child("config").flag("bias-pull-up")]])
+    add("power", "charge pump protection thresholds", "package/PowerSupplyBoard.h PS_CP_BAT_OVP_MV..PS_CP_BUS_OCP_ALARM_MA",
+        lambda: [macro(S, n) for n in ("PS_CP_BAT_OVP_MV", "PS_CP_BAT_OVP_ALARM_MV", "PS_CP_BUS_OVP_MV",
+                                       "PS_CP_BUS_OVP_ALARM_MV", "PS_CP_BUS_OCP_MA", "PS_CP_BUS_OCP_ALARM_MA")],
+        "bq2597x-standalone@66 ti,bq2597x,{bat-ovp,bat-ovp-alarm,bus-ovp,bus-ovp-alarm,bus-ocp,bus-ocp-alarm}-threshold",
+        lambda: [pump().u32(f"ti,bq2597x,{n}-threshold") for n in ("bat-ovp", "bat-ovp-alarm", "bus-ovp", "bus-ovp-alarm",
+                                                                   "bus-ocp", "bus-ocp-alarm")])
+    add("power", "external bq27z561 gauges: described, disabled", "package/PowerSupplyBoard.h PS_EXT_FG_*",
+        lambda: [[macro(S, "PS_EXT_FG_MASTER_SE"), "ti,bq27z561_master", macro(S, "PS_EXT_FG_ADDR"), False],
+                 [macro(S, "PS_EXT_FG_SLAVE_SE"), "ti,bq27z561_slave", macro(S, "PS_EXT_FG_ADDR"), False]],
+        "qupv3_se13_i2c / qupv3_se0_i2c reg (kona-qupv3.dtsi), bq27z561 child compatible, reg; bus status",
+        lambda: [[src.label(b).u32s("reg")[0], c.string("compatible"), c.u32("reg"), src.label(b).enabled()]
+                 for b in ("qupv3_se13_i2c", "qupv3_se0_i2c") for c in src.label(b).children.values()])
+    add("power", "charger VBUS / VCONN regulators", "package/PowerSupplyBoard.h (SMB5 supplies VBUS and VCONN)",
+        lambda: ["smb5-vbus", "smb5-vconn"], "&pm8150b_charger qcom,smb5-vbus / -vconn regulator-name (kona-pmic-overlay.dtsi)",
+        lambda: [chg().child("qcom,smb5-vbus").string("regulator-name"), chg().child("qcom,smb5-vconn").string("regulator-name")])
 
 
 def run_vendor(args):

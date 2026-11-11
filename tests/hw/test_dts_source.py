@@ -147,6 +147,9 @@ class StructArray(unittest.TestCase):
                 pipa_hw.struct_rows(p, "cfg")             # MAKER_A is not defined in b.h itself
             with self.assertRaises(KeyError):
                 pipa_hw.struct_rows(p, "none", h)
+            q = Path(d) / "c.h"
+            q.write_text("static const R r[] = {{-100, 0, 868000u}, {(-5), 0x10, 3}};\n")
+            self.assertEqual(pipa_hw.struct_rows(q, "r"), [[-100, 0, 868000], [-5, 16, 3]])
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 Status: **analisis statis dan host test saja.** Tidak ada yang di sini diprogram ke MDSS/DSI, panel, atau pengontrol touch, dan tidak ada yang dijalankan di tablet oleh repo ini. Layar di macOS pipa tetap frame buffer firmware (GOP, 1800×2880).
 
-Sumber: `MiCode/kernel_devicetree` `pipa-t-oss` `623dd5bf` (publik), dicek otomatis oleh `scripts/pipa_hw.py vendor` (59 fakta cocok, 0 berbeda). Kode: `devices/pipa/package/PanelBoard.h`, `TouchVendor.h`, host test `PanelBoardTests.c`, `TouchVendorTests.c`.
+Sumber: `MiCode/kernel_devicetree` `pipa-t-oss` `623dd5bf` (publik), dicek otomatis oleh `scripts/pipa_hw.py vendor` (bagian display dan touch: 59 fakta; seluruhnya 81 cocok, 0 berbeda). Kode: `devices/pipa/package/PanelBoard.h`, `TouchVendor.h`, host test `PanelBoardTests.c`, `TouchVendorTests.c`.
 
 ## Reset GPIO panel
 
