@@ -162,6 +162,14 @@ def reproducible_env(env=None):
     env = dict(os.environ if env is None else env)
     epoch = env.get("SOURCE_DATE_EPOCH")
     if not epoch:
+        shallow = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--is-shallow-repository"],
+                                 capture_output=True, text=True).stdout.strip() == "true"
+        if shallow:
+            # In a shallow clone the oldest commit looks like it changed every path, so the date is that commit's and
+            # two commits with the same kernel inputs build different kernels. Not fatal: within one checkout the
+            # build stays reproducible.
+            print("pipa_unixnu: warning: shallow clone; the build date follows HEAD, not the last kernel-input change "
+                  "(git fetch --unshallow, or set SOURCE_DATE_EPOCH)", file=sys.stderr)
         epoch = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%ct", "--", *KERNEL_INPUTS],
                                capture_output=True, text=True).stdout.strip() or "0"
         env["SOURCE_DATE_EPOCH"] = epoch

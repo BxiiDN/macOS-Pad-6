@@ -222,4 +222,16 @@ Prelink berhasil lagi. Catatan `kernel/kernel.json` XnuPrelink (`scripts/prelink
 
 Jadi pemetaan statisnya lengkap (setiap referensi kext ke kernel terpasang ke simbol kernel native, tanpa stub). Itu belum bukti bahwa kernel collection ini berjalan.
 
-**Reproducibility antar-commit**: kernel native run ini (`4f0e748c…`) berbeda dari percobaan 9 (`ce13aea1…`) meski source kernelnya sama. Satu-satunya perbedaan adalah `__TEXT,__const`, string versi: tanggal dipin dari waktu commit HEAD, dan HEAD berganti karena commit yang hanya mengubah alat dan dokumen. Mulai commit berikutnya tanggal diambil dari commit terakhir yang mengubah input kernel (`devices/pipa`, `profiles`, `kernel`, `third_party`, `.gitmodules`), sehingga commit dokumen atau CI menghasilkan kernel yang identik. Diverifikasi di percobaan 11.
+**Reproducibility antar-commit**: kernel native run ini (`4f0e748c…`) berbeda dari percobaan 9 (`ce13aea1…`) meski source kernelnya sama. Satu-satunya perbedaan adalah `__TEXT,__const`, string versi: tanggal dipin dari waktu commit HEAD, dan HEAD berganti karena commit yang hanya mengubah alat dan dokumen. Mulai commit berikutnya tanggal diambil dari commit terakhir yang mengubah input kernel (`devices/pipa`, `profiles`, `kernel`, `third_party`, `.gitmodules`), sehingga commit dokumen atau CI menghasilkan kernel yang identik. Diverifikasi di percobaan 11 dan 12.
+
+### Percobaan 11 — 2026-11-11, commit `984c8f5`, run [42998883741](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42998883741): semua langkah hijau; pin tanggal antar-commit belum berlaku
+
+- Compile + link: kernel native `226b3dba8eef8dc9e6cb394b0941efb10d015340f21dba466318a60658a7d26b`, 25.048.584 byte, `__TEXT` `0x188000`, 0 import; FGE (`sleh_synchronous` → `fge_xnu_handle`) dan null-PAC (`ml_addrperm_pacga`) terverifikasi di kode mesin; sensus 57.243 word PAuth, 0 di luar FGE.
+- Tata letak: muat, sisa 42.976 byte.
+- Prelink: `MH_FILESET` arm64e 135.036.928 byte, SHA-256 `79d228cc9953dc7c5b1c9a08386e597c172b139180147d0249cf2b669adf7b09`, 0 import, 0 di luar FGE; catatan XnuPrelink: `missing` {}, `stubbed` {}, `mapping_complete` true, 87 kext, 3.384 fungsi + 292 data terpasang lewat nama simbol, input native = kernel run ini.
+- Build kedua dari nol di run yang sama: identik (SHA-256, `LC_UUID`, semua section, link-edit, string versi).
+- Tetapi tanggal versi adalah 09:52:50 UTC (waktu `984c8f5` sendiri), bukan 09:18:20 (`50736cd`, commit input kernel terakhir). Penyebab: `actions/checkout` mengambil 1 commit; di clone dangkal commit itu tampak mengubah setiap path, jadi `git log -1 -- <input>` mengembalikan HEAD. Diperbaiki: `fetch-depth: 0` di `kernel-build.yml`, dan `pipa_unixnu.py` memberi peringatan bila clone dangkal.
+
+### Percobaan 12 — verifikasi reproducibility antar-commit
+
+Tidak ada input kernel yang berubah sejak `50736cd`, dan tanggalnya kini 09:18:20 UTC seperti percobaan 9. Harapan yang bisa diperiksa: kernel native sama persis dengan percobaan 9 (`ce13aea1…`); bila prelink juga deterministik, kernel collection sama dengan percobaan 9 (`840488d5…`). Hasil: lihat di bawah setelah run selesai.

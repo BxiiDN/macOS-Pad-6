@@ -54,6 +54,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Full history: scripts/pipa_unixnu.py pins the kernel's build date to the last commit that changed a kernel
+          # input. In a depth-1 clone that commit looks like it changed every path, so the date would be HEAD's.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
