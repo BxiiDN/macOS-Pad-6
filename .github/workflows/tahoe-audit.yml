@@ -79,10 +79,39 @@ jobs:
           name: tahoe-ipsw-kernelcache
           path: evidence/ipsw
 
+  images:
+    # Hashes and APFS volume UUIDs of the 26.x OS, SystemOS and AppOS images, for the
+    # [root] table of profiles/macos-26.5. The images are deleted after hashing.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools (ipsw fetches AEA keys from Apple's key server)
+        run: brew install blacktop/tap/ipsw
+      - name: Hash and inspect the disk images
+        env:
+          PRODUCT: ${{ inputs.product }}
+          VERSIONS: ${{ inputs.versions }}
+          DEVICE_CLASS: ${{ inputs.device_class }}
+        run: |
+          set -euo pipefail
+          curl -fsS "https://api.ipsw.me/v4/device/$PRODUCT?type=ipsw" -o ipsw-list.json
+          mkdir -p evidence/images
+          for v in $VERSIONS; do
+            url=$(python3 -c "import json,sys; fw=[f for f in json.load(open('ipsw-list.json'))['firmwares'] if f['version']==sys.argv[1]]; print(fw[0]['url'])" "$v")
+            case "$url" in https://updates.cdn-apple.com/*) ;; *) echo "not Apple CDN: $url"; exit 1;; esac
+            python3 -m tools.isa.ipsw images "$url" --device-class "$DEVICE_CLASS" --work "$RUNNER_TEMP/img" \
+              "evidence/images/images-$v.json"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tahoe-images
+          path: evidence/images
+
   publish:
     # Artifacts are also committed to the audit-evidence branch, so the evidence
     # can be read with plain git and copied into docs/evidence.
-    needs: [host, kernelcache]
+    needs: [host, kernelcache, images]
+    if: always()
     runs-on: ubuntu-24.04
     permissions:
       contents: write

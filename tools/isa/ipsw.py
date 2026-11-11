@@ -224,12 +224,12 @@ def adt_properties(blob, wanted_nodes=("", "product", "chosen")):
         p += 8
         props = {}
         for _ in range(nprops):
-            name = blob[p:p + 32].split(b"\0", 1)[0].decode()
+            name = blob[p:p + 32].split(b"\0", 1)[0].decode("ascii", "replace")
             length = struct.unpack_from("<I", blob, p + 32)[0] & 0x7FFFFFFF
             val = blob[p + 36:p + 36 + length]
             props[name] = val
             p += 36 + length + (-length % 4)
-        node = props.get("name", b"").split(b"\0", 1)[0].decode()
+        node = props.get("name", b"").split(b"\0", 1)[0].decode("ascii", "replace")
         here = node if path is None else (f"{path}/{node}" if path else node)
         key = "" if path is None else here
         if key in wanted_nodes:
@@ -252,6 +252,71 @@ COMPONENTS = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemT
               "Cryptex1,AppTrustCache", "OS", "Cryptex1,SystemOS", "Cryptex1,AppOS"]
 
 
+def sha256_file(path, chunk=64 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while b := f.read(chunk):
+            h.update(b)
+    return h.hexdigest()
+
+
+def aea_decrypt(path, out):
+    """Decrypt an AEA disk image with the key Apple's server publishes for it (macOS only):
+    `ipsw fw aea --key` fetches the key from the URL in the archive header; /usr/bin/aea decrypts."""
+    p = subprocess.run(["ipsw", "fw", "aea", "--key", str(path)], capture_output=True, text=True)
+    keys = [ln.strip() for ln in p.stdout.splitlines() if ln.strip().startswith("base64:")]
+    if p.returncode or len(keys) != 1:
+        raise RuntimeError(f"no AEA key for {path.name}: {p.stderr.strip()[-300:]}")
+    subprocess.run(["/usr/bin/aea", "decrypt", "-i", str(path), "-o", str(out), "-key-value", keys[0]],
+                   check=True, capture_output=True)
+
+
+def apfs_volume_uuids(dmg):
+    """Volume UUIDs of the APFS container in a disk image (macOS: hdiutil + diskutil), attached read-only."""
+    p = subprocess.run(["hdiutil", "attach", "-nomount", "-readonly", "-noverify", "-plist", str(dmg)],
+                       capture_output=True, check=True)
+    ents = plistlib.loads(p.stdout)["system-entities"]
+    devs = [e["dev-entry"] for e in ents if "dev-entry" in e]
+    try:
+        apfs = plistlib.loads(subprocess.run(["diskutil", "apfs", "list", "-plist"], capture_output=True,
+                                             check=True).stdout)
+        out = []
+        for c in apfs.get("Containers", []):
+            stores = [d.get("DeviceIdentifier") for d in c.get("PhysicalStores", [])]
+            if any(f"/dev/{s}" in devs or any(d.startswith(f"/dev/{s}") for d in devs) for s in stores if s):
+                out += [{"name": v.get("Name"), "uuid": v.get("APFSVolumeUUID"), "roles": v.get("Roles")}
+                        for v in c.get("Volumes", [])]
+        return out
+    finally:
+        subprocess.run(["hdiutil", "detach", "-force", devs[0]], capture_output=True)
+
+
+def images(src, cd, manifest, device_class, work):
+    """SHA-256 and APFS volume UUIDs of the OS and cryptex disk images (UniXNU profile [root])."""
+    _m, ident = identity_for(manifest, device_class)
+    out = {}
+    for comp in ("OS", "Cryptex1,SystemOS", "Cryptex1,AppOS"):
+        member = ident["Manifest"].get(comp, {}).get("Info", {}).get("Path")
+        if not member:
+            continue
+        raw = work / Path(member).name
+        with open(raw, "wb") as f:
+            read_member(src, cd[member], f.write)
+        entry = {"member": member, "member_sha256": sha256_file(raw), "aea": member.endswith(".aea")}
+        plain = raw
+        if entry["aea"]:
+            plain = raw.with_suffix("")
+            aea_decrypt(raw, plain)
+            raw.unlink()
+        entry["image_sha256"] = sha256_file(plain)
+        entry["image_size"] = plain.stat().st_size
+        entry["volumes"] = apfs_volume_uuids(plain)
+        plain.unlink()
+        out[comp] = entry
+        print(json.dumps({comp: entry}, indent=2), flush=True)
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -265,6 +330,11 @@ def main(argv=None):
     a.add_argument("url")
     a.add_argument("--device-class", required=True, help="e.g. j274ap (Mac mini M1)")
     a.add_argument("out_dir", type=Path)
+    a = sub.add_parser("images", help="OS and cryptex image hashes and volume UUIDs (macOS only)")
+    a.add_argument("url")
+    a.add_argument("--device-class", required=True)
+    a.add_argument("--work", type=Path, required=True, help="scratch directory with ~40 GB free")
+    a.add_argument("out", type=Path)
     args = ap.parse_args(argv)
     src = HttpSource(args.url) if args.url.startswith("http") else FileSource(args.url)
     cd = central_directory(src)
@@ -275,6 +345,13 @@ def main(argv=None):
     if args.cmd == "get":
         with open(args.out, "wb") as f:
             read_member(src, cd[args.member], f.write)
+        return 0
+    if args.cmd == "images":
+        args.work.mkdir(parents=True, exist_ok=True)
+        manifest = read_member(src, cd["BuildManifest.plist"])
+        res = images(src, cd, manifest, args.device_class, args.work)
+        args.out.write_text(json.dumps({"ipsw": args.url, "device_class": args.device_class,
+                                        "images": res}, indent=2) + "\n")
         return 0
     args.out_dir.mkdir(parents=True, exist_ok=True)
     manifest = read_member(src, cd["BuildManifest.plist"])
@@ -288,9 +365,18 @@ def main(argv=None):
             components[comp] = {"member": member, "size": cd[member][3], "aea": member.endswith(".aea")}
     adt = None
     dt_member = components.get("DeviceTree", {}).get("member")
+    dt_payload = b""
     if dt_member:
-        _t, dt_payload, _c = im4p_payload(read_member(src, cd[dt_member]))
-        adt = adt_properties(dt_payload)
+        try:
+            _t, dt_payload, _c = im4p_payload(read_member(src, cd[dt_member]))
+            if dt_payload[:4] == b"bvx2":
+                with tempfile.TemporaryDirectory() as tmp:
+                    plain = Path(tmp) / "dt"
+                    lzfse_decode(dt_payload, plain)
+                    dt_payload = plain.read_bytes()
+            adt = adt_properties(dt_payload)
+        except (ValueError, struct.error, UnicodeDecodeError, IndexError, RuntimeError) as e:
+            adt = {"error": f"{type(e).__name__}: {e}", "payload_head": dt_payload[:16].hex()}
     im4p = read_member(src, cd[path])
     typ, payload, comp = im4p_payload(im4p)
     out = args.out_dir / Path(path).name
