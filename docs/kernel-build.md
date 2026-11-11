@@ -192,8 +192,34 @@ Reproducibility: dua build dari nol dengan source dan lokasi sama berbeda SHA-25
 - Kernel native: SHA-256 `ce13aea1586d2e425b10f48170d884f2b0f4af1348ab32ae459f3074e7e5ddec`, 25.048.584 byte, `MH_EXECUTE` arm64e, `__TEXT` `0x188000`, **0 import chained fixup**. `sleh_synchronous` memanggil `fge_xnu_handle`; `ml_addrperm_pacga` berbadan null-PAC.
 - `build prelink`: kernelcache dari `UniversalMac_26.5_25F71_Restore.ipsw` (HTTP range, pin SHA-256 profil). `scripts/prelink_layout.py`: `__TEXT` native muat (sisa 42.976 byte).
 - Hasil: `kernel/kernel.macho`, **kernel collection `MH_FILESET` arm64e**, 135.036.928 byte, SHA-256 `840488d5d4b6ea38df85bbe210b24e170bbe012f28c47ff53936697a5dc66e3c`, `LC_UUID` `29f1b7a9e6a8f673fb8297457a4ba754`, 93 load command, 0 import. Segmen: `__TEXT` @ `0xfffffff007004000`, `__PRELINK_TEXT` (`0xcc0000`), `__DATA_CONST`, `__TEXT_EXEC` (`0x360c000`), `__PRELINK_INFO`, `__DATA`, `__LINKEDIT`, `__KLDDATA`, `__BOOTDATA`.
-- Catatan XnuPrelink (`kernel.json`): `format` `MH_FILESET`; input `kernelcache_sha256` `19ae26f4…` (= pin profil) dan `native_sha256` `ce13aea1…` (= kernel native run ini); entry `com.apple.kernel`; `matcher_version` 8; pemasangan simbol `symbol-names`; closure kext yang dipertahankan dicantumkan (AppleARMPlatform, AppleMobileFileIntegrity, apfs, IOHIDFamily, IOGPUFamily, …). Pemeriksaan regresi prelink UniXNU lolos (langkah berhasil). Jumlah target yang tidak terpasang/di-stub dicatat di percobaan 10.
+- Catatan XnuPrelink (`kernel.json`): `format` `MH_FILESET`; input `kernelcache_sha256` `19ae26f4…` (= pin profil) dan `native_sha256` `ce13aea1…` (= kernel native run ini); entry `com.apple.kernel`; `matcher_version` 8; pemasangan simbol `symbol-names`; closure kext yang dipertahankan dicantumkan (AppleARMPlatform, AppleMobileFileIntegrity, apfs, IOHIDFamily, IOGPUFamily, …). Pemeriksaan regresi prelink UniXNU lolos (langkah berhasil). Isi lengkap catatan: percobaan 10.
 - Sensus ISA kernel collection (statis): 6.526.890 word kode di 80 image arm64e; yang tidak dimiliki SM8250: PAuth 290.710 (`pac-branch` 154.421, `pac-dp1` 136.278, `pacga` 7, `pac-keyreg` 4), SHA3 122, SHA512 32, DIT 21, LRCPC2 4, SB 1. **Semuanya di kelas yang ditangani FGE; 0 di luar FGE.** Tanpa `pacstrip`, setiap instruksi PAC non-hint itu akan trap ke FGE saat dieksekusi; `pacstrip` adalah langkah berikutnya.
 - Reproducibility: build kedua dari nol menghasilkan kernel native `ce13aea1…` lagi (SHA-256 dan `LC_UUID` sama, tidak ada section yang berbeda).
 
 Yang tidak dibuktikan: kernel collection ini belum di-`pacstrip`, belum masuk payload/boot image, dan belum dijalankan. Prelink yang lolos adalah syarat perlu, bukan bukti boot.
+
+### Percobaan 10 — 2026-11-11, commit `c521ea5`, run [42997283204](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42997283204): catatan XnuPrelink lengkap
+
+Prelink berhasil lagi. Catatan `kernel/kernel.json` XnuPrelink (`scripts/prelink_record.py`):
+
+| Kunci | Nilai |
+| --- | --- |
+| `format` | `MH_FILESET` |
+| `inputs.kernelcache_sha256` | `19ae26f46899…` (= pin profil `macos-26.5-25F71`) |
+| `inputs.entry` | `com.apple.kernel` |
+| `closure` | 87 kext dipertahankan |
+| `collection_base` / `native_link_address` | `0xfffffff007004000` / `0xfffffff007004000` |
+| `collection_slide` | `0x1f000000000` |
+| pemasangan simbol (`kernel.map.json`) | `symbol-names`: 3.384 fungsi, 292 data, semuanya lewat nama simbol |
+| **`missing`** | **kosong**: tidak ada target kext yang tidak terpasang |
+| **`stubbed`** | **kosong**: tidak ada target yang di-stub (`allow_missing` false) |
+| `mapping_complete` | **true** |
+| `native_original_branches` | kosong |
+| `personalities_dropped` | 7: hfs.encodings, IOAccessoryManager, IOPCIFamily, IOSerialFamily, IOSkywalkFamily, AppleUSBHostMergeProperties, AppleUSBHostPlatformProperties |
+| `early_security_init` | `com.apple.driver.AppleMobileFileIntegrity` @ `0xfffffe00096f17cc` (= profil) |
+| `runtime_qualified`, `loadable` | **false**: XnuPrelink selalu menulis false; tidak ada yang menguji kernel collection ini saat berjalan |
+| `candidate_bytes` | 135.036.928 |
+
+Jadi pemetaan statisnya lengkap (setiap referensi kext ke kernel terpasang ke simbol kernel native, tanpa stub). Itu belum bukti bahwa kernel collection ini berjalan.
+
+**Reproducibility antar-commit**: kernel native run ini (`4f0e748c…`) berbeda dari percobaan 9 (`ce13aea1…`) meski source kernelnya sama. Satu-satunya perbedaan adalah `__TEXT,__const`, string versi: tanggal dipin dari waktu commit HEAD, dan HEAD berganti karena commit yang hanya mengubah alat dan dokumen. Mulai commit berikutnya tanggal diambil dari commit terakhir yang mengubah input kernel (`devices/pipa`, `profiles`, `kernel`, `third_party`, `.gitmodules`), sehingga commit dokumen atau CI menghasilkan kernel yang identik. Diverifikasi di percobaan 11.

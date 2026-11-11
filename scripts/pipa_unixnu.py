@@ -147,18 +147,22 @@ def unixnu_args(modules):
 
 
 BUILD_COMMANDS = ("build", "kernel", "prelink", "payload", "package", "release")
+# What the kernel is built from in this repository. The pinned build date is the time of the last commit that changed
+# one of these, so a commit that only touches documentation, CI or tooling builds the same kernel bit for bit.
+KERNEL_INPUTS = ("devices/pipa", "profiles", "kernel", "third_party", ".gitmodules")
 
 
 def reproducible_env(env=None):
     """Environment for a reproducible kernel step. XNU's config/newvers.pl stamps `date` into the kernel version
-    string unless KERNEL_BUILD_DATE is set; it is set here from SOURCE_DATE_EPOCH, or else from the commit time of
-    this repository's HEAD, so two builds of the same commit carry the same string. ZERO_AR_DATE (archive member
-    and debug-map times) is set by UniXNU's kernel step already; it is repeated for the archive builders."""
+    string unless KERNEL_BUILD_DATE is set; it is set here from SOURCE_DATE_EPOCH, or else from the time of the last
+    commit that changed a kernel input (KERNEL_INPUTS), so two builds of the same inputs carry the same string (it was
+    the only difference between two builds: docs/kernel-build.md). ZERO_AR_DATE (archive member and debug-map times)
+    is set by UniXNU's kernel step already; it is repeated for the archive builders."""
     import time
     env = dict(os.environ if env is None else env)
     epoch = env.get("SOURCE_DATE_EPOCH")
     if not epoch:
-        epoch = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%ct"],
+        epoch = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%ct", "--", *KERNEL_INPUTS],
                                capture_output=True, text=True).stdout.strip() or "0"
         env["SOURCE_DATE_EPOCH"] = epoch
     env.setdefault("KERNEL_BUILD_DATE", time.strftime("%a %b %d %H:%M:%S UTC %Y", time.gmtime(int(epoch))))
