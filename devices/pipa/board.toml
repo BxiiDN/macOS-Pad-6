@@ -36,9 +36,12 @@ lba_bytes = 4096
 root = "none"
 
 # The macOS 26.5 kernel: the generic CPU, interrupt, timer and platform expert path of the arm64e profile on this board's
-# cores. Storage, display, input and GPU are not selected yet: no arm64e build of them exists for SM8250 (ShengUfs builds
-# the source storage under arm64e, patches/unixnu/0001 gives it the SM8250 switch; Adreno650 is catalogued for iPadOS 17
-# only). docs/kernel-build.md.
+# cores. Display, input and GPU are not selected: no arm64e build of them exists for SM8250 (Adreno650 is catalogued for
+# iPadOS 17 only). Storage (G2) is built in every kernel step and linked only by pipa_macos26_ufs_defconfig:
+# component:ShengUfs runs, under arm64e, the source storage recipe (PipaUfs 5c64c01 + patches/shengufs, the package's
+# five storage sources; patches/unixnu 0001 for SM8250, 0003 for no root) and writes libShengSourceStorage.a;
+# component:RamBlock puts UniXNU's NativeRamBlock.cpp, which that recipe compiles, into the tree. With
+# pipa_macos26_defconfig neither archive is linked and the kernel is the generic one. docs/kernel-build.md.
 [kernel]
 defconfig = "pipa_macos26_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/macos.config"]
@@ -54,6 +57,9 @@ archives = [
   # each core registered with its cluster type.
   "component:ArmCpu",
   "build-libpthread-kernel.py",
+  # G2, as UniXNU-sheng's macOS profile orders them; its dependencies VirtioMmioBlock and VerifiedRoot come with it.
+  "component:ShengUfs",
+  "component:RamBlock",
 ]
 
 # The firmware is the Mu-Silicium pipa port (pipaPkg, Kona SM8250) of the uefi-pipa checkout, with UniXNU, the ramdisk
@@ -137,7 +143,7 @@ source = "device:dts/pipa.dts"
 include_dirs = ["soc:dts"]
 
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot", "ShengUfs", "RamBlock"]
 
 [adt]
 
@@ -156,6 +162,8 @@ unixnu = "../../third_party/UniXNU"
 
 [package.defconfig]
 "macos-26.5-25F71" = "pipa_macos26_defconfig"
+# pipa_macos26_ufs_defconfig (the same kernel with the source storage linked) is chosen by name: "defconfig
+# pipa_macos26_ufs_defconfig", as kernel-build.yml does for "[kernel-ufs]".
 "ipados-17.7.11-21H461" = "pipa_defconfig"
 
 # ---------------------------------------------------------------------------------------------------------------------

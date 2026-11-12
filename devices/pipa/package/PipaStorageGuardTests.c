@@ -12,17 +12,37 @@
 #define CHECK(c) do{if(!(c)){printf("FAIL %s:%d %s\n",__FILE__,__LINE__,#c);exit(1);}}while(0)
 
 static PipaStorageArgs on(void) {
-    PipaStorageArgs a = {{1, 1}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
+    PipaStorageArgs a = {{1, 1}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {1, 2}};
     return a;
 }
 
 int main(void) {
-    PipaStorageArgs a = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
+    PipaStorageArgs a = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
     CHECK(pipa_storage_decide(&a) == PipaStorageOff);               // the board's own arguments: nothing starts
     a.source_storage = (PipaBootArg){1, 2};
     CHECK(pipa_storage_decide(&a) == PipaStorageOff);               // only 1 enables it, as in sheng
     a = on();
     CHECK(pipa_storage_decide(&a) == PipaStorageStart);
+
+    // Only the four register inspections start it; every other native-ufs-probe value (bring-up, publication of block
+    // devices, the raw userdata test 15, memory reports) and no probe at all are refused.
+    unsigned started = 0;
+    for (uint32_t probe = 0; probe < 64; probe++) {
+        a = on(); a.probe = (PipaBootArg){1, probe};
+        const PipaStorageDecision d = pipa_storage_decide(&a);
+        CHECK(d == PipaStorageStart || d == PipaStorageRefusedProbe);
+        CHECK((d == PipaStorageStart) == (probe == 2 || probe == 6 || probe == 7 || probe == 8));
+        started += d == PipaStorageStart;
+    }
+    CHECK(started == 4);
+    a = on(); a.probe = (PipaBootArg){0, 0};
+    CHECK(pipa_storage_decide(&a) == PipaStorageRefusedProbe);
+    a = on(); a.probe = (PipaBootArg){1, 15};
+    CHECK(pipa_storage_decide(&a) == PipaStorageRefusedProbe);
+    CHECK(strstr(pipa_storage_reason(PipaStorageRefusedProbe), "read-only") != NULL);
+    // A root mode with a read-only probe is still a root mode.
+    a = on(); a.ufs_root = (PipaBootArg){1, 1};
+    CHECK(pipa_storage_decide(&a) == PipaStorageRefusedRoot);
 
     // Every mode in which NativeUfs writes userdata or mounts a root from it is refused, whatever else is set.
     a = on(); a.ufs_root = (PipaBootArg){1, 1};

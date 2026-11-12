@@ -40,6 +40,22 @@ class Errors(unittest.TestCase):
         self.assertNotIn("warning", " ".join(out))
 
 
+class LinkMap(unittest.TestCase):
+    def test_members(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = Path(d) / "kernel-link.map"
+            m.write_text("# Path: kernel\n# Arch: arm64e\n# Object files:\n[  0] linker synthesized\n"
+                         "[  1] /t/build/xnu/osfmk/startup.o\n"
+                         "[ 25] /t/build/sheng-source-storage/libShengSourceStorage.a(SourceStorage.o)\n"
+                         "[ 26] /t/build/sheng-source-storage/libShengSourceStorage.a(NativeUfs.late.o)\n"
+                         "# Sections:\n# Address Size Segment Section\n"
+                         "0x0 0x10 __TEXT __text libShengSourceStorage.a(Other.o)\n")
+            self.assertEqual(sb.map_members(m), ["SourceStorage.o", "NativeUfs.late.o"])
+            m.write_text("# Object files:\n[  1] /t/startup.o\n# Sections:\n")
+            self.assertEqual(sb.map_members(m), [])
+            self.assertIsNone(sb.map_members(Path(d) / "absent.map"))
+
+
 class Inputs(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

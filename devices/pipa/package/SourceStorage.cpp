@@ -26,8 +26,10 @@ extern "C" volatile uint32_t native_ufs_root_step;
 extern "C" const char *volatile native_ufs_root_failure;
 extern "C" void boot_log_tick(unsigned now);
 
-// NativeUfs polls the optional board diagnostic during window reads; pipa has none.
-extern "C" __attribute__((weak)) void boot_progress_poll(void) {}
+// NativeUfs polls the optional board diagnostic during window reads; pipa has none. Hidden: a weak definition the static
+// kernel link can export would be bound at run time, which the linker writes as a chained-fixup import (XnuPrelink
+// refuses any), as with native_exit_trace (zzzz-pipa-macos-absent-features.patch).
+extern "C" __attribute__((weak, visibility("hidden"))) void boot_progress_poll(void) {}
 
 // The decision, for the panic screen and a later read of the kernel's memory.
 extern "C" {
@@ -56,7 +58,7 @@ extern "C" void native_source_storage_start(void)
 {
     if (attempted) return;
     PipaStorageArgs args = {arg("native-source-storage"), arg("native-ufs-root"), arg("native-ufs-root-noverify"),
-                            arg("sheng-data-persist"), arg("sheng-log")};
+                            arg("sheng-data-persist"), arg("sheng-log"), arg("native-ufs-probe")};
     const PipaStorageDecision decision = pipa_storage_decide(&args);
     pipa_storage_decision = decision;
     if (decision == PipaStorageOff) return;
@@ -92,11 +94,21 @@ extern "C" void native_source_storage_start(void)
     if (!provider) panic("SourceStorage: platform root unavailable");
     storageDriver = native_ufs_source_create();
     if (!storageDriver) panic("SourceStorage: cannot allocate UFS service");
-    const char *step = !storageDriver->init() ? "init" : !storageDriver->attach(provider) ? "attach" :
-                       !storageDriver->start(provider) ? "start" : nullptr;
-    if (step)
-        panic("SourceStorage: UFS %s failed (root step %u: %s)", step, native_ufs_root_step,
-              native_ufs_root_failure ? native_ufs_root_failure : "no reason recorded");
+    if (!storageDriver->init() || !storageDriver->attach(provider))
+        panic("SourceStorage: UFS service init or attach failed");
+    // The guard admits only register inspections (native-ufs-probe 2, 6, 7, 8). NativeUfs::start runs the one asked
+    // for, reports it (probe 2 on the panic screen, the others in the log) and returns false: it publishes nothing.
+    // That is the expected outcome here, not a failure, so the service is detached and the boot goes on.
+    if (!storageDriver->start(provider)) {
+        printf("SourceStorage: UFS inspection done, nothing published (root step %u: %s)\n", native_ufs_root_step,
+               native_ufs_root_failure ? native_ufs_root_failure : "none");
+        storageDriver->detach(provider);
+        storageDriver->release();
+        storageDriver = nullptr;
+        boot_log_tick(0);
+        return;
+    }
+    // Not reached with the guard's inspections; kept so a start that does publish is reported, not silent.
     printf("SourceStorage: UFS started through public IOStorageFamily interface, read only\n");
     boot_log_tick(0);    // BootLog.c: records that pipa keeps no UFS log
 }

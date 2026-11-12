@@ -172,6 +172,43 @@ def check_archive(tree):
     return result
 
 
+def archive_undefined(archive):
+    """External symbols the archive's members reference and no member defines: what the kernel link must provide."""
+    defined, undefined = set(), set()
+    for line in run(["xcrun", "nm", "-gP", archive]).splitlines():
+        parts = line.split()
+        if len(parts) < 2 or parts[0].endswith(":"):
+            continue
+        (undefined if parts[1] in "Uu" else defined).add(parts[0])
+    return sorted(undefined - defined)
+
+
+def map_members(link_map, archive_name="libShengSourceStorage.a"):
+    """Members of ARCHIVE_NAME that ld64's link map lists among the linked object files ("[  n] path(member.o)")."""
+    out = []
+    if not Path(link_map).is_file():
+        return None
+    for line in Path(link_map).read_text(errors="replace").splitlines():
+        if line.startswith("# Sections:"):
+            break
+        m = re.match(r"^\[\s*\d+\]\s+(.*)$", line)
+        if m and archive_name in m.group(1):
+            member = re.search(r"\(([^()]+)\)\s*$", m.group(1))
+            out.append(member.group(1) if member else m.group(1))
+    return out
+
+
+def print_storage_errors(tree):
+    """The compiler errors of the storage recipe's per-source logs (also when it ran inside the kernel step)."""
+    for log in sorted((tree / "build/sheng-source-storage").rglob("*.log")):
+        if log.name == "pipa-recipe.log":
+            continue
+        errors = compile_errors(log.read_text(errors="replace"))
+        if errors:
+            print(f"== {log.relative_to(tree)}")
+            print("\n".join(errors))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--unixnu", type=Path)
@@ -180,6 +217,11 @@ def main():
     ap.add_argument("--modules", type=Path, default=Path(os.environ["WORK"]) / "modules.json" if os.environ.get("WORK") else None,
                     help="pipa_unixnu.py's modules.json (the feeds.toml checkouts); default $WORK/modules.json")
     ap.add_argument("--plan", action="store_true")
+    ap.add_argument("--check-only", action="store_true",
+                    help="the kernel step built the archive (component:ShengUfs): check it, do not run the recipe again")
+    ap.add_argument("--errors", action="store_true", help="only print the recipe's compiler errors (after a failed step)")
+    ap.add_argument("--linked", choices=("yes", "no"),
+                    help="check the kernel link map: the archive's members are (yes) or are not (no) in the kernel")
     args = ap.parse_args()
     env = board_env()
     if env["UNIXNU_SOURCE_STORAGE_ROOT"] != "none":
@@ -187,7 +229,16 @@ def main():
     if args.plan:
         print(json.dumps(env, indent=2))
         return
+    if args.errors:
+        trees = sorted(Path(args.unixnu, "out").glob("*/*/*/tree")) if not args.tree else [args.tree]
+        for tree in trees:
+            print_storage_errors(tree)
+        return
     tree = (args.tree or find_tree(args.unixnu)).resolve()
+    if args.check_only:
+        result = {"env": env, "mode": "built by the kernel step (component:ShengUfs)", **check_archive(tree)}
+        finish(result, tree, args)
+        return
     storage, commit = iostorage(tree)
     print(f"tree {tree}\nIOStorageFamily {commit} at {storage}")
     inputs = ensure_inputs(tree, args.unixnu, args.modules)
@@ -205,16 +256,28 @@ def main():
         print("\n".join(compile_errors(p.stdout + p.stderr)))
         # build-sheng-source-drivers.py keeps each source's whole compiler output in <stem>.log and raises with
         # only its last 5000 characters: the errors are in those files.
-        for log in sorted((tree / "build/sheng-source-storage").rglob("*.log")):
-            if log.name == "pipa-recipe.log":
-                continue
-            errors = compile_errors(log.read_text(errors="replace"))
-            if errors:
-                print(f"== {log.relative_to(tree)}")
-                print("\n".join(errors))
+        print_storage_errors(tree)
         sys.exit(f"build-sheng-source-storage.py failed ({p.returncode})")
     result = {"env": env, "iostoragefamily": commit, "inputs": inputs, **check_archive(tree)}
-    print(json.dumps({k: v for k, v in result.items() if k != "report"}, indent=2))
+    finish(result, tree, args)
+
+
+def finish(result, tree, args):
+    archive = Path(result["archive"])
+    if archive.is_file():
+        result["undefined"] = archive_undefined(archive)
+        print(f"{len(result['undefined'])} symbols the kernel must provide: {' '.join(result['undefined'])}")
+    if args.linked:
+        members = map_members(tree / "build/kernel-link.map")
+        result["linked_members"] = members
+        if members is None:
+            result["problems"].append("no kernel link map to check the link against")
+        elif args.linked == "yes" and not {"SourceStorage.o", "NativeUfs.late.o"} <= set(members):
+            result["problems"].append(f"the kernel link map lacks the storage objects (has {members})")
+        elif args.linked == "no" and members:
+            result["problems"].append(f"the generic kernel links storage objects: {members}")
+        print(f"link map: {len(members or [])} members of libShengSourceStorage.a in the kernel: {members}")
+    print(json.dumps({k: v for k, v in result.items() if k not in ("report", "undefined")}, indent=2))
     if args.json:
         args.json.write_text(json.dumps(result, indent=2) + "\n")
     if result["problems"]:

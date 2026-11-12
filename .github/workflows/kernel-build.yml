@@ -1,4 +1,4 @@
-# Kernel step of devices/pipa (macOS Tahoe 26.5, xnu-12377.121.6 + 121 patches) on a macOS runner, the
+# Kernel step of devices/pipa (macOS Tahoe 26.5, xnu-12377.121.6 + 122 patches) on a macOS runner, the
 # platform UniXNU builds on (after UniXNU's own .github/workflows/macos.yml). It compiles and links the native
 # XNU kernel; the prelink with the official 26.5 kernelcache (read by HTTP range requests) is optional.
 # Only text logs and a JSON report (sizes, hashes, Mach-O header, ISA census) are uploaded: the kernel and every
@@ -8,8 +8,9 @@
 # "[kernel-build]", "[kernel-prelink]" to also prelink, or "[kernel-repro]" to also build the same source a second
 # time from scratch in the same place and compare the two kernels section by section (a dispatch needs the workflow
 # on the default branch, which main does not have yet). Every build also runs scripts/kernel_size_audit.py on the
-# link map (-Wl,-map in pipa_macos26_defconfig). "[storage-build]" also builds the board's arm64e source storage archive
-# in the same tree and checks it (scripts/pipa_storage_build.py); it is not linked into the kernel.
+# link map (-Wl,-map in pipa_macos26_defconfig). The kernel step builds the board's arm64e source storage archive
+# (component:ShengUfs) and scripts/pipa_storage_build.py checks it; "[kernel-ufs]" configures pipa_macos26_ufs_defconfig,
+# which links it into the kernel ("[storage-build]" only starts a build).
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 name: Kernel build (pipa, macOS 26.5)
 
@@ -49,7 +50,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]') ||
       contains(github.event.head_commit.message, '[kernel-prelink]') || contains(github.event.head_commit.message, '[kernel-repro]') ||
-      contains(github.event.head_commit.message, '[storage-build]')
+      contains(github.event.head_commit.message, '[storage-build]') || contains(github.event.head_commit.message, '[kernel-ufs]')
     runs-on: macos-26
     timeout-minutes: 360
     steps:
@@ -117,7 +118,14 @@ jobs:
         run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- fetch
 
       - name: Configure
-        run: python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig pipa_macos26_defconfig
+        # "[kernel-ufs]": pipa_macos26_ufs_defconfig, the same kernel with pipa's source storage linked (G2).
+        run: |
+          defconfig=pipa_macos26_defconfig
+          if [ "$UFS" = 1 ]; then defconfig=pipa_macos26_ufs_defconfig; fi
+          echo "defconfig $defconfig"
+          python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig "$defconfig"
+        env:
+          UFS: ${{ contains(github.event.head_commit.message, '[kernel-ufs]') && '1' || '0' }}
 
       - name: Compile and link the native kernel (no prelink)
         id: kernel
@@ -152,13 +160,20 @@ jobs:
             --json "$WORK/size-audit.json" --markdown "$WORK/size-audit.md" > /dev/null
           cat "$WORK/size-audit.md"
 
-      # G2: pipa's arm64e source storage (PipaUfs + the package's five storage sources, no root, read only), built in
-      # the tree this kernel step left and checked; not linked (the macOS profile does not select it). [storage-build]
-      - name: Source storage archive (built, not linked; patches/unixnu 0001 + 0003)
+      # G2: pipa's arm64e source storage (PipaUfs + patches/shengufs, the package's five storage sources, no root, read
+      # only). The kernel step builds it (component:ShengUfs); this checks the archive (symbols, SM8250 switch, empty
+      # policy bundle, what the kernel must provide) and the link map: linked with [kernel-ufs], not linked otherwise.
+      - name: Source storage archive (component:ShengUfs; patches/unixnu 0001 + 0003, patches/shengufs)
         id: storage
-        if: >-
-          steps.kernel.outcome == 'success' && contains(github.event.head_commit.message, '[storage-build]')
-        run: python3 scripts/pipa_storage_build.py --unixnu "$UNIXNU" --modules "$WORK/modules.json" --json "$WORK/storage-build.json"
+        if: always() && steps.kernel.outcome != 'skipped'
+        run: |
+          if [ "${{ steps.kernel.outcome }}" != success ]; then
+            python3 scripts/pipa_storage_build.py --unixnu "$UNIXNU" --errors
+            exit 1
+          fi
+          python3 scripts/pipa_storage_build.py --unixnu "$UNIXNU" --check-only --linked "$LINKED" --json "$WORK/storage-build.json"
+        env:
+          LINKED: ${{ contains(github.event.head_commit.message, '[kernel-ufs]') && 'yes' || 'no' }}
 
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
