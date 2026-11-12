@@ -115,6 +115,11 @@ jobs:
       - name: Board check (as in CI)
         run: python3 scripts/pipa_unixnu.py check --unixnu "$UNIXNU" --in-place --work "$WORK" --adt --json "$WORK/pipa-board.json"
 
+      - name: Firmware boot map (uefi-pipa source vs board and the G6 model)
+        run: |
+          git submodule update --init --depth 1 third_party/uefi-pipa
+          python3 scripts/pipa_firmware_map.py --check --json "$WORK/firmware-map.json"
+
       - name: Fetch sources
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -234,6 +239,16 @@ jobs:
           python3 scripts/legacy_display_abi_probe.py --xnuprelink "$UNIXNU/kits/XnuPrelink" --kernelcache "$kc" \
             --json "$WORK/legacy-display-abi.json"
 
+      # GPU research (no build input): the GPU/accelerator classes a macOS Metal plugin would bind in the 26.5
+      # collection, and whether the iPadOS IOAcceleratorES class exists here. Counts and yes/no only.
+      - name: Metal accelerator ABI probe of the 26.5 collection (research, numbers only)
+        if: always() && (steps.prelink.outcome == 'failure' || steps.prelink.outcome == 'success')
+        continue-on-error: true
+        run: |
+          kc=$(find "$UNIXNU/out/ipsw" -name 'kernelcache.decompressed' -type f | head -n 1)
+          python3 scripts/gpu_metal_abi_probe.py --xnuprelink "$UNIXNU/kits/XnuPrelink" --kernelcache "$kc" \
+            --json "$WORK/gpu-metal-abi.json"
+
       - name: Report on the prelinked kernel collection
         id: prelink_report
         if: always() && steps.prelink.outcome == 'success'
@@ -274,7 +289,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/public"
           cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json \
             "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json \
-            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json "$WORK"/adreno-xnu.json "$WORK"/board-xnu.json "$WORK"/repro-files.json "$WORK"/legacy-display-abi.json \
+            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json "$WORK"/adreno-xnu.json "$WORK"/board-xnu.json "$WORK"/repro-files.json "$WORK"/legacy-display-abi.json "$WORK"/gpu-metal-abi.json "$WORK"/firmware-map.json \
             "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os

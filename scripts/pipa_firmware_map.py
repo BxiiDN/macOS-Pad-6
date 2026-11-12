@@ -127,21 +127,27 @@ def analyse(uefi=UEFI, board=pm.BOARD):
     only_fw = [r for r in reserved if not any(overlaps(r, d) for d in dt_reserved)]
     check("every no-map range of the mainline DT (the G6 model) is reserved by the firmware source", not only_dt,
           ", ".join(f"{a:#x}+{n:#x}" for a, n in only_dt) or "all covered")
-    # The macOS window on a map with the firmware's reservations.
-    descriptors_fw = pm.model_map(pm.BANKS, reserved)
-    win = pm.Window()
-    row = pm.evaluate(win, descriptors_fw, window["size"], window["table"])
-    model = pm.evaluate(win, pm.model_map(pm.BANKS, dt_reserved), window["size"], window["table"])
-    in_window = [r for r in reserved if row["base"] and overlaps(r, (row["base"], window["size"]))]
-    excluded = row.get("exclusions", [])
-    check("a window of the board's size is placed on the firmware-source map", row["base"],
-          f"base {row['base']:#x}, {window['size']:#x} bytes")
-    check("every firmware reservation inside the window is in its excluded-range table",
-          all(covered(r, excluded) for r in in_window),
-          ", ".join(f"{a:#x}+{n:#x}" for a, n in in_window) or "none inside")
-    if row["base"]:
-        k = pm.kernel_view(row, window["size"])
-        check("the kernel takes that table without a panic", not k["panic"], k["panic"] or f"{k['ranges']} ranges")
+    # The macOS window on a map with the firmware's reservations. Needs MemoryWindow.h from the UniXNU submodule; when
+    # it is absent (a bare checkout) the window checks are skipped, the boot-image and reservation checks still run.
+    row, model, excluded = {"base": 0}, {"base": 0}, []
+    try:
+        win = pm.Window()
+    except FileNotFoundError:
+        win = None
+    if win is not None:
+        descriptors_fw = pm.model_map(pm.BANKS, reserved)
+        row = pm.evaluate(win, descriptors_fw, window["size"], window["table"])
+        model = pm.evaluate(win, pm.model_map(pm.BANKS, dt_reserved), window["size"], window["table"])
+        in_window = [r for r in reserved if row["base"] and overlaps(r, (row["base"], window["size"]))]
+        excluded = row.get("exclusions", [])
+        check("a window of the board's size is placed on the firmware-source map", row["base"],
+              f"base {row['base']:#x}, {window['size']:#x} bytes")
+        check("every firmware reservation inside the window is in its excluded-range table",
+              all(covered(r, excluded) for r in in_window),
+              ", ".join(f"{a:#x}+{n:#x}" for a, n in in_window) or "none inside")
+        if row["base"]:
+            k = pm.kernel_view(row, window["size"])
+            check("the kernel takes that table without a panic", not k["panic"], k["panic"] or f"{k['ranges']} ranges")
     return {
         "evidence": "FS (firmware source); not measured on the tablet",
         "uefi_revision_file": str(uefi / MEMORY_MAP),
