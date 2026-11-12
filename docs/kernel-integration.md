@@ -2,7 +2,7 @@
 
 Diperbarui: 2026-11-12 (sesi 9). Baseline sesi: `4b5b53b`. Semua angka di bawah berasal dari log run yang ditautkan atau dari perintah yang bisa diulang; tidak ada yang dijalankan di tablet.
 
-**Ringkasan.** Tiga konfigurasi kernel pipa ter-compile, ter-link dan ter-prelink dengan kernelcache 26.5 di runner macOS, masing-masing dengan 0 import chained fixup dan 0 simbol tak ter-resolve, dan build kedua dari nol identik bit demi bit: generik, dengan storage UFS (probe-only), dan dengan **Adreno650** ([run 43145180980](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145180980)). Empat simbol yang dulu kurang untuk Adreno650 kini didefinisikan oleh kode nyata (presenter GopFramebuffer dan ekspor log di memori), bukan stub. Ter-link bukan berarti berfungsi: tidak ada yang memanggil driver GPU di kernel macOS, dan tidak ada bukti perangkat keras untuk GPU, display, touch, maupun storage.
+**Ringkasan.** Tiga konfigurasi kernel pipa ter-compile, ter-link dan ter-prelink dengan kernelcache 26.5 di runner macOS, masing-masing dengan 0 import chained fixup dan 0 simbol tak ter-resolve, dan build kedua dari nol identik bit demi bit: generik, dengan storage UFS (probe-only), dan dengan **Adreno650** ([run 43150998287](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43150998287)). Empat simbol yang dulu kurang untuk Adreno650 kini didefinisikan oleh kode nyata (presenter GopFramebuffer dan ekspor log di memori), bukan stub. Ter-link bukan berarti berfungsi: tidak ada yang memanggil driver GPU di kernel macOS, dan tidak ada bukti perangkat keras untuk GPU, display, touch, maupun storage.
 
 ## Konfigurasi
 
@@ -10,7 +10,7 @@ Diperbarui: 2026-11-12 (sesi 9). Baseline sesi: `4b5b53b`. Semua angka di bawah 
 | --- | --- | --- | --- |
 | Pemilih di workflow | `[kernel-build]`, `[kernel-prelink]` | `[kernel-ufs]` | `[kernel-gpu]` |
 | Arsip yang di-link (selain jalur generik) | — | `libShengSourceStorage.a` | `libAdreno650.a`, `libPipaGpu.a` |
-| Hasil terakhir | GEN_RESULT | UFS_RESULT | [run 43145180980](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145180980): 31 anggota ter-link, `__TEXT` `0x188000`, sisa 42.976 byte |
+| Hasil terakhir | [run 43145263703](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145263703): 0 anggota arsip ter-link, `__TEXT` `0x188000`, reproducible | [run 43149085043](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43149085043): 12 anggota ter-link, `__TEXT` `0x190000`, reproducible | [run 43150998287](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43150998287): 31 anggota ter-link, `__TEXT` `0x188000`, reproducible |
 | Perangkat lain | — | file hanya di `devices/pipa` | file hanya di `devices/pipa` |
 
 Setiap kernel step membangun **semua** arsip board (storage, Adreno650, libPipaGpu); defconfig yang menentukan mana yang di-link, dan `--linked yes|no` memeriksa link map. Rantai patch tetap 122/122.
@@ -34,11 +34,11 @@ Perilaku yang jujur di kernel ini: tidak ada yang memanggil `native_gop_presente
 
 | Pemeriksaan | Hasil | Bukti |
 | --- | --- | --- |
-| Compile terhadap xnu-12377 | 29 objek `libAdreno650.a` (1.229.456 byte) + 2 objek `libPipaGpu.a` (324.056 byte), `-Werror` | run 43145180980 |
+| Compile terhadap xnu-12377 | 29 objek `libAdreno650.a` (1.229.456 byte) + 2 objek `libPipaGpu.a` (324.056 byte), `-Werror` | run 43150998287 (pertama kali lulus semua: 43145180980) |
 | Simbol | 398 simbol dibutuhkan kedua arsip; **0** tidak terdefinisi di kernel; ketiga simbol hand-off/ekspor ada di kernel | `adreno-xnu.json` |
-| Link | 29 + 2 anggota di link map; 0 import chained fixup; kernel native 25.263.616 byte, SHA-256 `121cf27cf58759cf4a9517a67dc2119ac1cc2d4f2316fea29ee02d9c2ee1e67d` | `kernel-report.json` |
-| Prelink | kernel collection `MH_FILESET` arm64e 135.118.848 byte, SHA-256 `8de717f72bc5e96dcea104510571c377d21e774135346515dd1980d2aba920ea`; `missing`/`stubbed` {}, `mapping_complete` true, 87 kext | `prelink-record-summary.json` |
-| Reproducibility | build kedua dari nol: SHA-256, UUID dan string versi sama; run 43143696276 (commit lain, input kernel sama) menghasilkan kernel dan kernel collection yang sama | langkah repro |
+| Link | 29 + 2 anggota di link map; 0 import chained fixup; kernel native 25.263.616 byte, SHA-256 `4a6cd55e0da62e0bdb26b0404b00c7b00c9affd531054c92af8639220d91c3b9` | `kernel-report.json` |
+| Prelink | kernel collection `MH_FILESET` arm64e 135.118.848 byte, SHA-256 `02de1343c98ed7131745fc9f2f9ee05e04ce3ad097ebac194228f5077554f05b`; `missing`/`stubbed` {}, `mapping_complete` true, 87 kext | `prelink-record-summary.json` |
+| Reproducibility | build kedua dari nol: SHA-256 dan UUID sama (run 43150998287, juga 43145180980); run 43143696276 dan 43145180980 (dua commit, input kernel sama) menghasilkan kernel `121cf27c…` dan kernel collection `8de717f7…` yang sama | langkah repro |
 | Katalog | `patches/unixnu/0002`: `os_abi` sekarang juga `macos-26.5-25F71`; `verified_devices` tetap kosong | `pipa_unixnu.py check` |
 | Pemanggil | tidak ada: tanpa personality, `GpuProbe.cpp` (bring-up iPadOS yang menulis register GPU) tidak termasuk; kelas-kelas hanya terdaftar lewat start C++ kernel | `pipa_macos26_gpu_defconfig` |
 
@@ -52,7 +52,7 @@ Akselerasi GPU tidak diklaim.
 
 | Pemeriksaan | Hasil |
 | --- | --- |
-| Compile terhadap xnu-12377 | `PipaBacklight.c` dengan record compile `bsd_init.c`, `-Werror`: berhasil (`scripts/pipa_board_xnu_check.py`, run 43145180980) |
+| Compile terhadap xnu-12377 | `PipaBacklight.c` dengan record compile `bsd_init.c`, `-Werror`: berhasil (`scripts/pipa_board_xnu_check.py`, run 43145180980, 43145263703, 43149085043, 43150998287) |
 | Simbol | `IODelay`, `PE_parse_boot_argn`, `ml_io_map_unmappable`, `ml_io_unmap`, `printf`, `__stack_chk_*`: semua ada di kernel |
 | Tulis register | audit statis tetap: hanya register transfer GENI; KTZ8866 lewat `ktz_write`, ditolak selama `allow_writes` = 0 |
 | Di-link | **tidak**: tidak ada pemanggil `pipa_backlight_attach`. Menautkannya mengubah kernel tanpa manfaat sampai pemilik mau menguji jalur baca-saja (`pipa-backlight=1`) |
@@ -61,9 +61,9 @@ Akselerasi GPU tidak diklaim.
 
 | Batas XnuPrelink | Generik | UFS | GPU |
 | --- | --- | --- | --- |
-| `__TEXT` native di celah `__PRELINK_TEXT` (`0x1927e0`) | GEN_TEXT | UFS_TEXT | `0x188000`, sisa **42.976** |
-| `__DATA_CONST` + `__LASTDATA_CONST` sebelum konstanta kext pertama | GEN_DC | UFS_DC | sisa **918.568** |
-| `__TEXT_EXEC` + `__KLD` di bawah `__DATA` collection | GEN_EX | UFS_EX | sisa **5.341.184** |
+| `__TEXT` native di celah `__PRELINK_TEXT` (`0x1927e0`) | `0x188000`, sisa **42.976** | `0x190000`, sisa **10.208** | `0x188000`, sisa **42.976** |
+| `__DATA_CONST` + `__LASTDATA_CONST` sebelum konstanta kext pertama | sisa **918.568** | sisa **918.568** | sisa **918.568** |
+| `__TEXT_EXEC` + `__KLD` di bawah `__DATA` collection | sisa **5.472.256** | sisa **5.406.720** | sisa **5.341.184** |
 
 Adreno650 hampir seluruhnya kode (`__TEXT,__text` 117.828 byte, ke `__TEXT_EXEC`); bagian `__TEXT` non-eksekusinya ±1,5 KB dan tidak menambah satu halaman pun. Jadi tidak ada yang perlu dipangkas, dan tidak ada simbol, driver atau pemeriksaan yang dibuang. Opsi yang dievaluasi tetapi **tidak** dipakai: memindah `__cstring` arsip board ke `__DATA_CONST` (preseden: XNU sendiri memindah `__HIB,__cstring` ke `__DATA_CONST,__hib_const`). Uji dengan `ld64.lld` lokal: segmen input saja tidak cukup (linker menggabung literal C ke `__TEXT,__cstring`), perlu ganti nama dan tipe section; dan `__DATA_CONST` bisa ditulis sampai lockdown. Karena tidak dibutuhkan dan sedikit melemahkan perlindungan sebelum lockdown, opsi itu ditinggalkan. Batas yang paling dekat tetap `__PRELINK_TEXT` untuk kernel UFS (10.208 byte).
 

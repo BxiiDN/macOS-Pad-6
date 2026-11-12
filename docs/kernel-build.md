@@ -1,6 +1,6 @@
 # Build kernel macOS Tahoe 26.5 untuk pipa
 
-Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berhasil di-compile, di-link, dan di-prelink** dengan kext kernelcache resmi 26.5 (J274AP 25F71) di runner macOS, dan build kernel native-nya **reproducible bit demi bit** (percobaan 8–9, 2026-11-11). Kernel collection belum dilewatkan `pacstrip`, belum dimasukkan ke payload, dan **belum di-boot** di perangkat atau emulator. Klaim di halaman ini hanya yang ada buktinya di log run yang ditautkan.
+Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berhasil di-compile, di-link, dan di-prelink** dengan kext kernelcache resmi 26.5 (J274AP 25F71) di runner macOS, dan build kernel native-nya **reproducible bit demi bit** (percobaan 8–9, 2026-11-11). Sejak sesi 9 itu berlaku untuk tiga konfigurasi: generik, dengan storage UFS, dan dengan Adreno650 (percobaan 19–21). Kernel collection belum dilewatkan `pacstrip`, belum dimasukkan ke payload, dan **belum di-boot** di perangkat atau emulator. Klaim di halaman ini hanya yang ada buktinya di log run yang ditautkan.
 
 ## Apa yang dibangun
 
@@ -324,3 +324,41 @@ Laporan kesiapan lengkap: [kernel-integration.md](kernel-integration.md). Belum 
 | Batas prelink | `__PRELINK_TEXT` sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.341.184 (`prelink_layout.py`, baru) |
 | Build kedua | SHA-256, UUID, string versi sama |
 | `PipaBacklight.c` | ter-compile dengan record compile `bsd_init.c` (`-Werror`); 7 simbol yang dibutuhkan ada di kernel; tidak di-link |
+
+### Percobaan 19 — 2026-11-12, commit `59b7883`, run [43145263703](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145263703): kernel generik, input sesi 9, reproducible
+
+`[kernel-prelink] [kernel-repro]` dengan `pipa_macos26_defconfig`. Semua arsip board dibangun (storage, Adreno650, libPipaGpu), **0 anggota** di link map (`--linked no` lulus untuk ketiganya); 398 simbol yang dibutuhkan arsip GPU semuanya terdefinisi (dua arsip itu sendiri menyediakan hand-off/ekspor).
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.048.584 byte, SHA-256 `f1fc02b07d3e7701a74477aca55357769f8ca8f7b38c01eb8615a27d2f276553`, 0 import |
+| Kernel collection | 135.036.928 byte, SHA-256 `52795685bc03a974a9dec7da1cb5c57e20e548eecc84b57e0188c8cf39df19f9`, `missing`/`stubbed` {}, 87 kext |
+| Batas prelink | `__TEXT` `0x188000`, sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.472.256 |
+| Build kedua | SHA-256 dan UUID sama |
+
+Hash berbeda dari percobaan 16 hanya karena tanggal build (input kernel berubah di sesi 9).
+
+### Percobaan 20 — 2026-11-12, commit `2d19365`, run [43149085043](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43149085043): kernel UFS, input sesi 9, reproducible
+
+`[kernel-ufs] [kernel-prelink] [kernel-repro]`, input kernel sama dengan percobaan 19.
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.200.784 byte, SHA-256 `9d5e23eefc2f7a950fd8f7c15939e407e5f6a3ab41b012c457e1ecc3ee19e80c`, 0 import |
+| Storage | 12 anggota ter-link, 385 simbol dari kernel ter-resolve; arsip GPU 0 anggota |
+| Kernel collection | 135.102.464 byte, SHA-256 `a951ff56c5c43ad50a787b73b30312687543131da5dea92e1cd7afbad4ad1619`, `missing`/`stubbed` {}, 87 kext |
+| Batas prelink | `__TEXT` `0x190000`, sisa 10.208; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.406.720 |
+| Build kedua | SHA-256 dan UUID sama |
+
+### Percobaan 21 — 2026-11-12, commit `4b27695`, run [43150998287](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43150998287): kernel GPU pada input akhir sesi 9, reproducible
+
+`[kernel-gpu] [kernel-prelink] [kernel-repro]`, input kernel sama dengan percobaan 19–20 (setelah `patches/unixnu/0002` berubah, jadi tanggal build dan hash berbeda dari percobaan 17–18; kodenya sama).
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.263.616 byte, SHA-256 `4a6cd55e0da62e0bdb26b0404b00c7b00c9affd531054c92af8639220d91c3b9`, 0 import |
+| Arsip | Adreno650 29/29 dan libPipaGpu 2/2 anggota ter-link, storage 0; 398 simbol, 0 tak terdefinisi |
+| Kernel collection | 135.118.848 byte, SHA-256 `02de1343c98ed7131745fc9f2f9ee05e04ce3ad097ebac194228f5077554f05b`, `missing`/`stubbed` {}, `mapping_complete` true, 87 kext |
+| Batas prelink | `__TEXT` `0x188000`, sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.341.184 |
+| Build kedua | SHA-256 dan UUID sama |
+| `PipaBacklight.c` | ter-compile, 7 simbol ada di kernel, tidak di-link |
