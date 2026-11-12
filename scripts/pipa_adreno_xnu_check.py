@@ -94,6 +94,13 @@ def symbols(path, undefined):
     return {line.split()[0] for line in out.splitlines() if line.split() and not line.split()[0].endswith(":")}
 
 
+def kernel_defined(path):
+    """Every symbol the linked kernel defines, local ones included: a hidden (private extern) definition, such as
+    __ubsan_handle_add_overflow_minimal, resolves the link but is no longer external in the output, so -g misses it."""
+    out = subprocess.run(["xcrun", "nm", "-PU", str(path)], capture_output=True, text=True, check=True).stdout
+    return {line.split()[0] for line in out.splitlines() if line.split() and not line.split()[0].endswith(":")}
+
+
 def map_members(link_map, archive_name):
     if not Path(link_map).is_file():
         return None
@@ -146,7 +153,7 @@ def main():
                 "text_segment_bytes": sum(n for (seg, _), n in total.items() if seg == "__TEXT"),
             }
         needed = sorted(undefined - defined)
-        provided = symbols(kernel, undefined=False)
+        provided = kernel_defined(kernel)
         # Apple clang's arm64e code takes the address of a weak-imported function through a signed pointer it emits
         # as l_<name>.ptrauth (the member's __DATA,__auth_ptr); nm lists that private label as undefined. It is the
         # pointer to _<name>, so it resolves exactly when _<name> does: that symbol is what is checked.

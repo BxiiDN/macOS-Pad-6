@@ -93,7 +93,7 @@ def main():
         if where == "unixnu":
             return Path(args.unixnu) / rel
         return Path(modules[where.split(":", 1)[1]]) / rel if where.split(":", 1)[1] in modules else None
-    provided = nm(kernel, "-gPU")
+    provided = nm(kernel, "-PU")   # local ones too: a hidden definition still resolves the link
     result, problems = {"tree": str(tree), "kernel": str(kernel), "sources": {}}, []
     sources = [(group, locate(where, rel)) for group, where, rel in SOURCES]
     includes = ["-I", str(package)] + [x for _, src in sources if src for x in ("-I", str(src.parent))] + \
@@ -116,8 +116,9 @@ def main():
             row = {"group": group, "compiled": p.returncode == 0, "stderr": p.stderr[-3000:]}
             # The backlight group must build (it is the one meant for this kernel); the touch group is an evaluation of
             # what a macOS touch build would need, so its compile errors are reported, not a failure of the step.
-            if p.returncode and group == "backlight":
-                problems.append(f"{name} does not compile against xnu-12377")
+            if p.returncode:
+                if group == "backlight":
+                    problems.append(f"{name} does not compile against xnu-12377")
             else:
                 row["needed"] = sorted(nm(obj, "-gPu"))
                 row["defines"] = sorted(nm(obj, "-gPU"))
