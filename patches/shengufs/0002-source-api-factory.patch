@@ -6,23 +6,23 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 The source storage recipe compiles NativeUfs with -DNATIVE_UFS_SOURCE_API=1, and SourceStorage.cpp (the board
 package's, pipa's as sheng's) creates the UFS service through native_ufs_source_create(). PipaUfs 5c64c01
 predates that entry point: the archive of kernel-build run 43106623934 left it undefined. This adds the
-catalog pin's definition unchanged (a new NativeUfs, nothing else); outside the source API nothing changes.
+catalog pin's definition unchanged (a new NativeUfs, nothing else) at the end of the file, outside the block and root
+region, so a probe-only build (NATIVE_UFS_PROBE_ONLY, patches/unixnu/0004) keeps it; outside the source API nothing
+changes.
 
 --- a/NativeUfs.cpp
 +++ b/NativeUfs.cpp
-@@ -1685,6 +1685,15 @@
- };
- OSDefineMetaClassAndStructors (NativeUfsBlock, IOBlockStorageDevice)
- 
+@@ -2627,3 +2627,13 @@
+   fMap.reset ();
+   IOService::stop (provider);
+ }
++
 +#if defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API
 +// The source runtime owns registration and attachment after IOStorageFamily
 +// has loaded. No second IOKit personality starts this service in that mode.
++// Outside the block/root region, so a probe-only build (NATIVE_UFS_PROBE_ONLY) has it too.
 +extern "C" IOService *native_ufs_source_create (void)
 +{
 +  return new NativeUfs;
 +}
 +#endif
-+
- extern "C" {
- volatile uint32_t native_ufs_blocks_published = 0;
- volatile uint64_t native_ufs_block_reads = 0;

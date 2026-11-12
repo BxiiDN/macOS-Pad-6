@@ -175,6 +175,16 @@ jobs:
         env:
           LINKED: ${{ contains(github.event.head_commit.message, '[kernel-ufs]') && 'yes' || 'no' }}
 
+      # G3: the pinned Adreno650 fork (with patches/adreno650) and its kits compiled by the device recipe
+      # build-adreno650.py with this kernel's compile records, and its kernel symbols looked up in this kernel. Not
+      # linked: the macOS profile selects no GPU. A failure here is a finding about the fork on xnu-12377 and is shown as
+      # such; it does not stop the kernel steps after it.
+      - name: Adreno650 against xnu-12377 (compiled, not linked)
+        id: adreno
+        if: always() && steps.kernel.outcome == 'success'
+        continue-on-error: true
+        run: python3 scripts/pipa_adreno_xnu_check.py --unixnu "$UNIXNU" --modules "$WORK/modules.json" --json "$WORK/adreno-xnu.json"
+
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
         if: >-
@@ -224,7 +234,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/public"
           cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json \
             "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json \
-            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json \
+            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json "$WORK"/adreno-xnu.json \
             "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os

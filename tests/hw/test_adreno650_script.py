@@ -54,8 +54,10 @@ class KnownFailures(unittest.TestCase):
         r, why = ta.classify("pin", "test_vm", self.TEXT, "line 2: 0")
         self.assertEqual(r, "known-fail")
         self.assertIn("TLBIVAL", why)
+        # Resolved by patches/adreno650/0003: the patched test_vm failing at the old line is no longer excused.
         r, _ = ta.classify("patched", "test_vm", self.TEXT, "line 3: s.vm.map(...)")
-        self.assertEqual(r, "known-fail")
+        self.assertEqual(r, "FAILED")
+        self.assertNotIn(("patched", "test_vm"), ta.KNOWN_FAILURES)
 
     def test_unlisted_or_elsewhere_is_failed(self):
         self.assertEqual(ta.classify("pin", "test_vm", self.TEXT, "line 3: x")[0], "FAILED")      # wrong line
@@ -66,7 +68,8 @@ class KnownFailures(unittest.TestCase):
 
     def test_series_files(self):
         lines = [l for l in (ta.PATCHES / "series").read_text().splitlines() if l.strip() and not l.startswith("#")]
-        self.assertEqual(lines, ["0001-vm-map-null-memory.patch", "0002-tests-smmu-peers-accept-tlbival.patch"])
+        self.assertEqual(lines, ["0001-vm-map-null-memory.patch", "0002-tests-smmu-peers-accept-tlbival.patch",
+                                 "0003-tests-vm-owned-alias-is-exclusive.patch"])
         for name in lines:
             text = (ta.PATCHES / name).read_text()
             self.assertIn("SPDX-License-Identifier", text)
@@ -74,6 +77,11 @@ class KnownFailures(unittest.TestCase):
         self.assertNotIn("NativeAdrenoVm.cpp", (ta.PATCHES / lines[1]).read_text())   # 0002 touches tests only
         self.assertTrue(all(f.startswith("tests/") for f in __import__("re").findall(
             r"^\+\+\+ b/(\S+)", (ta.PATCHES / lines[1]).read_text(), __import__("re").M)))
+        # 0003 touches tests/test_vm.cpp only, and replaces the refusal expectation with upstream's.
+        third = (ta.PATCHES / lines[2]).read_text()
+        self.assertEqual(__import__("re").findall(r"^\+\+\+ b/(\S+)", third, __import__("re").M), ["tests/test_vm.cpp"])
+        self.assertIn("-            CHECK(s.vm.map(&second,0,0x802000,change==2?9:3", third)
+        self.assertIn("+        CHECK(!s.vm.map(&second,0,0x802000,3,1,2,&b) && !s.vm.unmap(b));", third)
 
 
 if __name__ == "__main__":

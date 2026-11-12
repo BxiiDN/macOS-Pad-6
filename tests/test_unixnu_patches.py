@@ -159,6 +159,14 @@ class Applied(unittest.TestCase):
         self.assertEqual(order[-1], "Adreno650")
         self.assertEqual(set(order[:-1]), {"AdrenoPM4", "AdrenoFirmware", "ArmSmmu4K"})
 
+    def test_no_root_is_probe_only(self):
+        # 0004: no root -> NativeUfs without the block devices and the root publication.
+        text = (self.ux / "scripts/build-sheng-source-storage.py").read_text()
+        at = text.index("    if no_root:\n        # No root from userdata: NativeUfs is built probe-only")
+        self.assertIn("flags.append('-DNATIVE_UFS_PROBE_ONLY=1')", text[at:at + 400])
+        self.assertLess(text.index("flags += ufs_soc.defines("), at)
+        compile(text, "build-sheng-source-storage.py", "exec")
+
     def test_storage_recipe_without_root(self):
         """0003: with UNIXNU_SOURCE_STORAGE_ROOT=none the recipe needs no policy directory and goes on to the header
         step (which needs the IOStorageFamily checkout and macOS: here it stops there); without it, it refuses."""

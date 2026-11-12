@@ -166,6 +166,9 @@ def check_archive(tree):
     problems = [f"undefined pipa entry points: {missing}"] if missing else []
     if "-DNATIVE_UFS_SM8250=1" not in result["ufs_defines"] or result["strings_sm8550"]:
         problems.append(f"NativeUfs was not compiled for SM8250 (defines {result['ufs_defines']})")
+    # patches/unixnu/0004: with no root the block devices and root publication are not compiled at all.
+    if "-DNATIVE_UFS_PROBE_ONLY=1" not in result["ufs_defines"]:
+        problems.append(f"NativeUfs was not compiled probe-only (defines {result['ufs_defines']})")
     if result["policy_count"] != 0:
         problems.append(f"root policy bundle holds {result['policy_count']} policies; pipa ships none")
     result["problems"] = problems

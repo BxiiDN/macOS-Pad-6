@@ -58,13 +58,16 @@ LINUX_DRIVERS = {"geni-se.h": "include/linux/soc/qcom/geni-se.h", "qcom-geni-se.
 # The clock and pin sources of the backlight bus (package/GeniI2cBoard.h), same commit.
 LINUX_BUS = {"gcc-sm8250.c": "drivers/clk/qcom/gcc-sm8250.c", "pinctrl-sm8250.c": "drivers/pinctrl/qcom/pinctrl-sm8250.c",
              "sm8250.dtsi": "arch/arm64/boot/dts/qcom/sm8250.dtsi"}
+# The DSC 1.1 rate-control sources package/PanelLink.h follows (drm_dsc_compute_rc_parameters as msm's DSI calls it).
+LINUX_DSC = {"drm_dsc_helper.c": "drivers/gpu/drm/display/drm_dsc_helper.c", "drm_dsc.h": "include/drm/display/drm_dsc.h",
+             "dsi_host.c": "drivers/gpu/drm/msm/dsi/dsi_host.c"}
 # The Adreno a6xx GMU sources scripts/gen_pipa_gmu.py generates pipa's GMU inputs from (same commit).
 LINUX_GPU = ["drivers/gpu/drm/msm/adreno/a6xx_gmu.c", "drivers/gpu/drm/msm/adreno/a6xx_gmu.h",
              "drivers/gpu/drm/msm/adreno/a6xx_catalog.c", "drivers/gpu/drm/msm/registers/adreno/a6xx.xml",
              "drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml"]
 SPARSE = ["/arch/arm64/boot/dts/qcom/sm8250*", "/arch/arm64/boot/dts/qcom/pm8150*", "/include/dt-bindings/",
           "/include/uapi/linux/input-event-codes.h"] + ["/" + p for p in LINUX_DRIVERS.values()] + ["/" + p for p in LINUX_GPU] + \
-    ["/" + p for p in LINUX_BUS.values() if not p.endswith(".dtsi")]
+    ["/" + p for p in LINUX_BUS.values() if not p.endswith(".dtsi")] + ["/" + p for p in LINUX_DSC.values()]
 PKG = ROOT / "devices/pipa/package"
 VENDOR_GIT = "https://github.com/MiCode/kernel_devicetree"
 VENDOR_BRANCH = "pipa-t-oss"
@@ -767,6 +770,42 @@ def vendor_facts(vendor):
         "sde_dsi qcom,platform-te-gpio (kona-sde-display.dtsi)",
         lambda: gpio(src.label("sde_dsi"), "qcom,platform-te-gpio"))
 
+    def tlmm_users(gpio_no):
+        """Every node and property of the loaded vendor files that names TLMM <gpio_no> (as cells or as a pins string)."""
+        out = []
+        roots = [src.root] + [n for n in getattr(src, "detached", {}).values()] if hasattr(src, "root") else []
+        seen = set()
+        for root in roots:
+            for node in root.find(lambda n: True):
+                if id(node) in seen:
+                    continue
+                seen.add(id(node))
+                for prop, parts in node.props.items():
+                    cells = [c for kind, v in parts if kind == "cells" for c in v]
+                    hit = any(cells[i] == "&tlmm" and i + 1 < len(cells) and cells[i + 1] == gpio_no
+                              for i in range(len(cells)))
+                    hit = hit or (prop == "pins" and f"gpio{gpio_no}" in [v for kind, v in parts if kind == "str"])
+                    if hit:
+                        out.append(f"{node.path} {prop}")
+        return sorted(out)
+    def kind(user):
+        path, prop = user.rsplit(" ", 1)
+        leaf = path.rsplit("/", 1)[-1].lstrip("&")
+        if prop == "qcom,platform-reset-gpio" and "dsi" in leaf:
+            return "DSI panel reset"
+        if path.startswith("&sde_dsi_active/") or path.startswith("&sde_dsi_suspend/"):
+            return "sde_dsi pin state"
+        return user                                     # anything else would be a second use of the line
+    # The common board file (xiaomi-sm8250-common.dtsi) serves several Xiaomi SM8250 devices, so many panel nodes name the
+    # line; what matters for pipa is that every user is a DSI panel's reset or sde_dsi's pin state, and pipa's two are
+    # among them.
+    add("display", "TLMM 75: what uses it in the vendor tree", "package/PanelBoard.h PNL_GPIO_RESET (display reset only)",
+        lambda: [["DSI panel reset", "sde_dsi pin state"], True, True],
+        "every node of VENDOR_FILES naming <&tlmm 75 ...> or pins = \"gpio75\", by kind; pipa's m82 nodes among them",
+        lambda: [sorted({kind(u) for u in tlmm_users(75)}),
+                 any(u.endswith("dsi_m82_36_02_0a_dual_dphy_video qcom,platform-reset-gpio") for u in tlmm_users(75)),
+                 any(u.endswith("dsi_m82_42_02_0b_dual_dphy_video qcom,platform-reset-gpio") for u in tlmm_users(75))])
+
     def pin_state(label):
         n = src.label(label)
         cfg = n.child("config")
@@ -1076,8 +1115,70 @@ def bus_facts(linux):
     return rows
 
 
+def dsc_facts(linux):
+    """package/PanelLink.h's DSC constants, the pre-SCR 8 bpp / 8 bpc rate-control row and the rc buffer thresholds,
+    against drm_dsc.h and drm_dsc_helper.c; and that msm's DSI sets convert_rgb, uses the pre-SCR table and
+    line_buf_depth = bpc + 1 (what pnl_dsc_config assumes)."""
+    texts = {k: (Path(linux) / v).read_text() for k, v in LINUX_DSC.items()}
+    L = PKG / "PanelLink.h"
+    repo_text = L.read_text()
+    rows = []
+
+    def add(fact, repo_src, repo_fn, linux_src, linux_fn):
+        try:
+            repo = repo_fn()
+        except (KeyError, ValueError, LookupError) as e:
+            repo = f"ERROR {e}"
+        try:
+            lx = linux_fn()
+        except (KeyError, ValueError, LookupError) as e:
+            lx = f"ERROR {e}"
+        rows.append({"fact": fact, "repository": repo_src, "repo": repo, "linux_source": linux_src, "linux": lx})
+
+    for name in ("DSC_NUM_BUF_RANGES", "DSC_RC_PIXELS_PER_GROUP", "DSC_SCALE_DECREMENT_INTERVAL_MAX", "DSC_RC_MODEL_SIZE_CONST",
+                 "DSC_RC_EDGE_FACTOR_CONST", "DSC_RC_TGT_OFFSET_HI_CONST", "DSC_RC_TGT_OFFSET_LO_CONST",
+                 "DSC_MUX_WORD_SIZE_8_10_BPC", "DSC_RANGE_BPG_OFFSET_MASK"):
+        add(name, f"package/PanelLink.h {name}", lambda n=name: macro(L, n), f"{LINUX_DSC['drm_dsc.h']} {name}",
+            lambda n=name: c_eval(c_defines(texts["drm_dsc.h"])[n], c_defines(texts["drm_dsc.h"])))
+
+    def numbers(s):
+        return [int(x) for x in re.findall(r"-?\d+", s)]
+
+    def linux_row():
+        m = re.search(r"\.bpp = DSC_BPP\(8\), \.bpc = 8,\s*\{(.*?)\n\t\}", texts["drm_dsc_helper.c"], re.S)
+        if not m:
+            raise LookupError("no { DSC_BPP(8), 8 } row")
+        start = texts["drm_dsc_helper.c"].index("rc_parameters_pre_scr[]")
+        if m.start() < start or m.start() > texts["drm_dsc_helper.c"].index("};", start):
+            raise LookupError("the 8/8 row found is not rc_parameters_pre_scr's")
+        return numbers(re.sub(r"/\*.*?\*/", "", m.group(1), flags=re.S))
+
+    def repo_row():
+        m = re.search(r"dsc_pre_scr_8bpp_8bpc = \{(.*?)\};", repo_text, re.S)
+        if not m:
+            raise LookupError("no dsc_pre_scr_8bpp_8bpc")
+        return numbers(m.group(1))
+    add("pre-SCR rate control, 8 bpp / 8 bpc", "package/PanelLink.h dsc_pre_scr_8bpp_8bpc", repo_row,
+        f"{LINUX_DSC['drm_dsc_helper.c']} rc_parameters_pre_scr[] {{DSC_BPP(8), 8}}", linux_row)
+    add("rc buffer thresholds", "package/PanelLink.h dsc_rc_buf_thresh", lambda: array(L, "dsc_rc_buf_thresh"),
+        f"{LINUX_DSC['drm_dsc_helper.c']} drm_dsc_rc_buf_thresh[]", lambda: array(Path(linux) / LINUX_DSC["drm_dsc_helper.c"],
+                                                                                    "drm_dsc_rc_buf_thresh"))
+    body = lambda: re.search(r"static int dsi_populate_dsc_params\(struct msm_dsi_host \*msm_host, struct drm_dsc_config \*dsc\)\n\{(.*?)\n\}",
+                             texts["dsi_host.c"], re.S).group(1)
+    add("msm DSI: convert_rgb, pre-SCR table, line_buf_depth = bpc + 1", "package/PanelLink.h pnl_dsc_config",
+        lambda: ["convert_rgb = 1" in repo_text and "d->convert_rgb = 1;" in repo_text,
+                 "dsc_pre_scr_8bpp_8bpc" in repo_text, "d->line_buf_depth = d->bits_per_component + 1;" in repo_text],
+        f"{LINUX_DSC['dsi_host.c']} dsi_populate_dsc_params",
+        lambda: ["dsc->convert_rgb = 1;" in body(), "DRM_DSC_1_1_PRE_SCR" in body(),
+                 "dsc->line_buf_depth = dsc->bits_per_component + 1;" in body()])
+    for r in rows:
+        bad = any(isinstance(r[k], str) and r[k].startswith("ERROR") for k in ("repo", "linux"))
+        r["result"] = "error" if bad else ("match" if r["repo"] == r["linux"] else "MISMATCH")
+    return rows
+
+
 def run_drivers(args):
-    rows = driver_facts(args.linux) + bus_facts(args.linux)
+    rows = driver_facts(args.linux) + bus_facts(args.linux) + dsc_facts(args.linux)
     summary = {k: sum(1 for r in rows if r["result"] == k) for k in ("match", "MISMATCH", "error")}
     if args.json:
         Path(args.json).write_text(json.dumps({"linux": LINUX_COMMIT, "summary": summary, "facts": rows}, indent=2,

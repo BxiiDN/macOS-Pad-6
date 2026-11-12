@@ -1,4 +1,6 @@
 # Patches scripts/test_adreno650.py applies to xVanTuring/Adreno650 at its pin, in order. 0001 is a driver fix (also
-# the change to carry into a format-2 build of the fork), 0002 a test fixture fix. Each says what it fixes and why.
+# the change to carry into a format-2 build of the fork), 0002 a test fixture fix, 0003 a stale test expectation replaced
+# by upstream Adreno740's (d834731). Each says what it fixes and why.
 0001-vm-map-null-memory.patch
 0002-tests-smmu-peers-accept-tlbival.patch
+0003-tests-vm-owned-alias-is-exclusive.patch

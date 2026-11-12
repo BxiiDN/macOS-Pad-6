@@ -16,7 +16,7 @@ driver sources that build against those doubles (UniXNU's AdrenoPM4 kit from the
     reported "known-fail"; a listed failure that no longer fails, or fails elsewhere, is FAILED;
   - every other test must build and pass.
 The tests run twice: on the fork as pinned ("pin") and with patches/adreno650/series applied ("patched": a driver
-fix and a test fixture fix, each patch says what and why). Both results are printed and written to the JSON.
+fix, a test fixture fix and a stale test expectation replaced by upstream's, each patch says what and why). Both results are printed and written to the JSON.
 With --dtb (the mainline pipa DTB of scripts/pipa_hw.py compile), tests/gpu/A650PipaBoard.cpp also feeds the GPU and
 GMU nodes' reg and iommus properties through NativeAdrenoBoard and checks them against package/GpuPowerBoard.h.
 
@@ -51,11 +51,13 @@ KNOWN_FAILURES = {
                              "TLBIVAL, a 64-bit write at context bank + 0x620 (NativeAdrenoVm::unmap -> "
                              "ArmSmmu4KSyncContextTlbPages). Stale test fixture: patch 0002"),
     ("pin", "test_vm"): ("CHECK(0)", "the same stale SMMU peer (TLBIVAL at context bank + 0x620): patch 0002"),
-    ("patched", "test_vm"): ("s.vm.map(&second,0,0x802000", "the test expects a second owned BO aliasing the first one's "
-                             "physical page (made by the fixture) with other attributes to be refused; since fork commit "
-                             "1c4065c owned memory is mapped without the alias scan and the test was not updated. A "
-                             "test/driver disagreement left open, not patched"),
 }
+# Resolved, kept here so the reason stays with the script: patched test_vm stopped at line 190
+# (s.vm.map(&second,0,0x802000,...)==kIOReturnBadArgument). The fork's 1c4065c maps driver-allocated BOs through the
+# exclusive batch (exclusivePages is true for every non-imported BO: it owns its pages until its unmap completes), and the
+# test still expected a different-class map over two driver BOs the fixture put on one page to be refused. Upstream
+# Adreno740 replaced that expectation in d834731; patches/adreno650/0003 takes upstream's block. A test fix, not a driver
+# change: if test_vm fails again it is FAILED, not known-fail.
 
 
 def run(cmd, **kw):

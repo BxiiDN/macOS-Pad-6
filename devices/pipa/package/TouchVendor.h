@@ -11,8 +11,9 @@
 //     PNL_GPIO_RESET, TLMM 75) resets the touch half too, and the touch bootloader is otherwise reset over SPI;
 //   - firmware chosen by the panel maker byte of mi,panel-id (PanelBoard.h): 0x42 CSOT, 0x36 TM; the images are the
 //     tablet's (vendor partition), never in this repository. UniXNU-pipa's build-gop-legacy-display.py builds in the TM
-//     image only, so a CSOT tablet would get the other maker's firmware: tv_config_for_panel is the selection a driver
-//     should make from the panel identity instead (not wired yet);
+//     image only, so a CSOT tablet would get the other maker's firmware: tv_config_for_variant (from PanelLink.h
+//     pnl_variant_select) is the selection a driver should make instead, NULL for an unidentified panel (not wired into
+//     a driver yet);
 //   - a 38 x 60 sensor matrix (X_Channel, Y_Channel of both makers' MP criteria), active pen, doubled stylus
 //     resolution.
 #ifndef PIPA_TOUCH_VENDOR_H
@@ -53,6 +54,16 @@ static inline const TvConfig *tv_config_for_panel(uint32_t id0, uint32_t id1) {
         return NULL;
     for (size_t i = 0; i < TV_CONFIGS; ++i)
         if (tv_configs[i].maker == pnl_maker(id1))
+            return &tv_configs[i];
+    return NULL;
+}
+
+// The configuration for a panel variant (PanelLink.h pnl_variant_select), NULL for PNL_UNKNOWN: a driver that does not
+// know the panel loads no firmware rather than the other maker's.
+static inline const TvConfig *tv_config_for_variant(PnlVariant v) {
+    const unsigned maker = v == PNL_TM ? PNL_MAKER_TM : v == PNL_CSOT ? PNL_MAKER_CSOT : 0;
+    for (size_t i = 0; maker && i < TV_CONFIGS; ++i)
+        if (tv_configs[i].maker == maker)
             return &tv_configs[i];
     return NULL;
 }
