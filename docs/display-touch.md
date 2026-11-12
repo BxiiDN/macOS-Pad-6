@@ -97,6 +97,54 @@ Driver feed (bukan package):
 | `QcomGeniSpi`, `ShengNovatekTouch`, `ShengHidInput` | tidak dibangun | katalog: ABI iPadOS; HID untuk macOS (IOHIDDevice) belum ada |
 | Adreno650 `NativeAdrenoPublish.cpp` metode ekspor | ter-link, tidak terjangkau | pemanggil hanya menerima proses `backboardd` (server render iPadOS); di macOS servernya WindowServer |
 
+## Kebutuhan ABI NativeLegacyDisplay untuk macOS 26.5 (sesi 10)
+
+`NativeLegacyDisplay` (GopFramebuffer) adalah subkelas dari kelas asli `IOMobileFramebufferLegacy` (`IOMobileGraphicsFamily`) yang mengganti back end perangkat kerasnya; WindowServer lalu memakainya seperti display Apple. Ia terikat ke satu fileset lewat fixture (`legacy-display-<build>.json` UniXNU-sheng, ditulis `gen-board-abi.py` dari collection itu; dibaca `build-gop-legacy-display-27.py`). Isinya dan sumbernya:
+
+| Komponen fixture | Dari mana | macOS 27.3 (`26C5035r`) | macOS 26.5 (`25F71`, diukur run 43168676072) |
+| --- | --- | --- | --- |
+| Vtable `IOMobileFramebufferLegacy` (target + diversity per slot) | chained fixup collection | 483 slot | **473 slot** |
+| Slot `IOService` (batas override) | vtable `IOService` kernel | 272 | 272 (sama) |
+| Vtable induk `IOMobileFramebuffer` | idem | — | 371 slot |
+| Ukuran instance | `movz w3` di konstruktor `OSMetaClass` | 9.120 | **6.904** |
+| 4 binding kelas (C2, D2, `gMetaClass`, `ZTV`) | simbol `IOMobileGraphicsFamily` | ada | ada |
+| 11 getter/dispatcher (IOSurface ×8, swap/vsync/refresh/hotplug, IOAV ×3) | simbol tiga kext | ada | **semua ada** |
+| Offset field display (`display_width` 0x21b0, …) | instruksi `display_width` | cocok | **berbeda** |
+| Offset request: mask layer 0x478 | `getCurrentSrc/DstRect_gated` | cocok | **berbeda** |
+| Offset request: rect 0x11 / 0x51 | idem | cocok | cocok |
+| Diversity slot pure | collection VM rilis yang sama (`AppleParavirtDisplay`) | ada (oracle 27.3) | **oracle 26.5 belum diambil**; tidak ada di collection J274AP |
+| Peran slot (method yang di-override) | dipetakan dari fixture referensi lewat diversity | — | perlu dipetakan ulang untuk 473 slot dan ditinjau |
+
+Pengukuran oleh `scripts/legacy_display_abi_probe.py` (langkah workflow setelah prelink): hanya nama simbol, jumlah, ukuran dan ya/tidak; tidak ada kode atau alamat Apple yang dicatat. Kesimpulan: tata letak 26.5 **berbeda** dari 27.3 (10 slot lebih sedikit, instance 2.216 byte lebih kecil, field pindah), jadi fixture 27.3 tidak bisa dipakai dan `NativeLegacyDisplay` tidak bisa dibangun untuk 26.5 sampai ada fixture 26.5.
+
+Komponen yang diperlukan untuk inisialisasi display macOS lewat jalur ini, berurutan:
+
+1. Fixture 26.5: `gen-board-abi.py --kernelcache <26.5 J274AP> --oracle <collection VM 26.5>` di runner (keduanya dari IPSW resmi lewat HTTP range; tidak disimpan di repo), lalu tinjau setiap peran slot dan offset field terhadap kode 26.5 (cek `checks` fixture).
+2. `build-gop-legacy-display-27.py` (UniXNU-sheng) untuk build `25F71` macOS: saat ini menolak selain `24A446`/`26C5035r`; butuh entri 26.5 dan `kernel_target` 26.
+3. `IOMobileGraphicsFamily` dimuat sebelum display (iPadOS: `bsd_init` memuatnya; macOS 26.5: root profil prelink, sudah ada di closure).
+4. Frame buffer: presenter GOP (`PipaGop.cpp`) sudah ada; `NativeLegacyDisplay` menyalin frame (jalur CPU) atau menawarkannya ke hand-off GPU (`native_gop_gpu_offer`, API lama patch `gopframebuffer/0001`).
+5. IOSurface dan IOAVFamily (timing/warna untuk mode macOS): kext root profil, ada.
+6. Panel penuh (dual DSI, DSC 1.1, TM/CSOT) **bukan** bagian jalur ini: `NativeLegacyDisplay` hanya memakai frame buffer firmware 1800×2880. Panel penuh butuh driver MDSS/DPU/DSI sendiri dengan clock/GDSC; tanpa itu baca MDSS = SError.
+
+## Evaluasi driver display, panel, touch dan HID untuk macOS (sesi 10)
+
+Bukti: `scripts/pipa_board_xnu_check.py` (compile dengan record compile kernel, `-Werror`, simbol dicari di kernel; tidak di-link), run 43172672651.
+
+| Bagian | Kode yang ada | Untuk macOS 26.5 | Yang masih kurang |
+| --- | --- | --- | --- |
+| Dual DSI (2 host, 4 lane, clock dari PLL DSI0) | `PanelLink.h` (model host) | OS-netral, belum di kernel mana pun | driver MDSS/DPU/DSI + PHY 7 nm, vote clock/GDSC MDSS; tanpa itu baca MDSS = SError |
+| DSC 1.1 (rate control = Linux) | `PanelLink.h` | idem | pemrograman encoder DSC di DPU; nilai panel nyata tidak diketahui (DT hanya geometri slice) |
+| Panel TM / CSOT | `pnl_variant_select` | idem | identitas panel saat boot (firmware/boot-arg); urutan perintah on per varian |
+| Reset TLMM 75 | `pnl_reset_check` (baca-saja) | idem | toggling reset hanya oleh driver panel, setelah catu daya |
+| Firmware NT36532 | `tv_config_for_variant` | idem | image dari partisi vendor (bukan Git); `native_touch_firmware[_size]` tidak ada di kernel ini |
+| Bus GENI SPI | UniXNU `QcomGeniSpi/GeniSpi.c` | **ter-compile**, 2 simbol kernel, semua ada | — |
+| Protokol NT36532 | `NvtProtocol.c` (pin ShengNovatekTouch) | **ter-compile**, 7 simbol kernel, semua ada | — |
+| Bring-up touch | `package/TouchProbe.cpp` | **ter-compile** (19 simbol kernel ada) | `native_touch_firmware`, `native_touch_firmware_size`; jalur start macOS (seperti `pipa_board_start`) |
+| Status jari | `package/TouchState.cpp` | **ter-compile** | konsumennya `NativeHidInput` |
+| HID | `ShengHidInput` `NativeHidInput.cpp` | **tidak** dibangun | subkelas `IOHIDDevice` asli lewat fixture per fileset (`OriginalHidDeviceABI.h`); fixture 26.5 belum ada (sama seperti display) |
+
+Kesimpulan: lapisan bus, protokol dan bring-up touch secara bahasa dan simbol kompatibel dengan xnu-12377; yang menghalangi touch di macOS adalah firmware (di luar Git), jalur publikasi HID 26.5, dan pengujian. Panel penuh adalah pekerjaan driver baru (MDSS/DSI/DSC), bukan port.
+
 ## Yang tidak dibuktikan
 
 - Bahwa TLMM 75 benar-benar me-reset panel atau touch pipa: dibaca dari DT vendor, tidak diukur.

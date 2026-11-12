@@ -6,8 +6,8 @@ Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berh
 
 `unixnu build kernel` untuk `devices/pipa` dengan profil `macos-26.5-25F71`:
 
-1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 122 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
-2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig` (generik), `pipa_macos26_ufs_defconfig` (dengan storage UFS, `[kernel-ufs]`) atau `pipa_macos26_gpu_defconfig` (dengan Adreno650, `[kernel-gpu]`).
+1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 123 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
+2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig` (generik), `pipa_macos26_ufs_defconfig` (dengan storage UFS, `[kernel-ufs]`), `pipa_macos26_gpu_defconfig` (dengan Adreno650, `[kernel-gpu]`) atau `pipa_macos26_ufs_gpu_defconfig` (keduanya, `[kernel-ufs-gpu]`).
 3. Arsip yang di-link ke kernel: corecrypto sumber (dua kali, kedua dengan namespace), ArmDTPlatform, ArmCpu cabang pipa, libpthread kernel.
 4. Hasil: kernel native `mach.development.bcm2837` (Mach-O `MH_EXECUTE`, arm64e), lalu (tanpa `--skip-prelink`) prelink dengan kext dari kernelcache J274AP 26.5 asli.
 
@@ -18,7 +18,7 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Syarat | Status | Bukti |
 | --- | --- | --- |
 | Board format 2 di-resolve UniXNU untuk 26.5 dan override iPadOS | siap | `scripts/pipa-unixnu.sh check` |
-| 122/122 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
+| 123/123 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
 | Patch ARMv8.2 (null-PAC, FGE) sesuai sumber `kernel/` | siap | `gen_tahoe_patches.py --check` |
 | Device tree → ADT dengan nilai board | siap | `check --adt` |
 | ArmCpu cabang pipa dari pin `feeds.toml` | siap (resolusi) | G1 di board-migration.md |
@@ -32,7 +32,8 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Prelink dengan kernelcache 26.5 | **berhasil** di percobaan 9 (percobaan 3–8 gagal: tata letak, lalu import) | lihat riwayat |
 | Build bit-for-bit reproducible | **ya**: kernel native dan kernel collection identik antar-build dan antar-commit dengan input kernel yang sama | percobaan 8, 9, 12 |
 | Kernel dengan storage UFS (probe-only) ter-link dan ter-prelink | **ya**: 0 import, sisa `__PRELINK_TEXT` 10.208 byte | percobaan 15 |
-| Kernel dengan Adreno650 (`pipa_macos26_gpu_defconfig`) ter-link dan ter-prelink | **ya**: 0 simbol tak ter-resolve, 0 import, `__TEXT` tetap `0x188000`, reproducible; tidak ada pemanggil driver GPU | percobaan 17–18 |
+| Kernel dengan Adreno650 (`pipa_macos26_gpu_defconfig`) ter-link dan ter-prelink | **ya**: 0 simbol tak ter-resolve, 0 import, `__TEXT` tetap `0x188000`, reproducible; sejak sesi 10 dipanggil dari `bsd_init` lewat `pipa_board_start` | percobaan 17–18 |
+| Kernel uji pertama UFS + Adreno650 (`pipa_macos26_ufs_gpu_defconfig`) | **ya**: compile, link, prelink; 0 import, 0 simbol tak ter-resolve; build kedua dan run kedua identik (native, link map, simbol, kernel collection) | percobaan 24–25 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Boot di tablet | belum | |
 
@@ -362,3 +363,32 @@ Hash berbeda dari percobaan 16 hanya karena tanggal build (input kernel berubah 
 | Batas prelink | `__TEXT` `0x188000`, sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.341.184 |
 | Build kedua | SHA-256 dan UUID sama |
 | `PipaBacklight.c` | ter-compile, 7 simbol ada di kernel, tidak di-link |
+
+## Sesi 10: kernel gabungan UFS + Adreno650 dan jalur start board
+
+Perubahan input kernel: `zzzzd-pipa-board-start.patch` (rantai **123**: `bsd_init` memanggil `pipa_board_start` di belakang `XNU_PIPA_BOARD_START`), `patches/adreno650/0004` (server render per OS), `libPipaGpu.a` kini juga berisi `PipaBoardStart.c`, `PipaGop.cpp`, `GpuProbe.cpp` versi macOS dan `GpuFirmware.c`. Konfigurasi baru `pipa_macos26_ufs_gpu_defconfig` (`[kernel-ufs-gpu]`). `[kernel-repro]` kini juga mem-prelink ulang dan membandingkan link map, tabel simbol dan kernel collection (`scripts/repro_compare.py`).
+
+| Percobaan | Run | Commit | Berhenti di | Perbaikan |
+| --- | --- | --- | --- | --- |
+| 22 | [43167684313](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43167684313) | `ee79623` | `archive-10-build-pipa-gpu`: `PipaGop.cpp` (tipe `IOPlatformExpert` tak lengkap; `%u` untuk field `unsigned long` `PE_Video`) | header + format (`8708608`); builder mencoba semua sumber sebelum gagal |
+| 23 | [43168676072](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43168676072) | `8708608` | compile + link **berhasil** (0 import); prelink: `No room for 0x194000 bytes in __PRELINK_TEXT` (kurang `0x10c0`); cek integrasi menganggap `___ubsan_handle_add_overflow_minimal` hilang (definisi kernel-nya hidden); `nm` pada `TouchProbe.o` yang gagal compile | `-DMACH_ASSERT_EXPR_MAX=40` hanya untuk kernel gabungan; pencarian simbol kernel termasuk lokal; cek touch diperbaiki (`d8362c3`) |
+| 24 | [43170501593](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43170501593) | `d8362c3` | **semua langkah lulus** | — (touch: `-Wreorder-init-list` dari makro `IOMallocType` XNU, flag relaksasi dipindah ke belakang, `ccf2e57`) |
+| 25 | [43172672651](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43172672651) | `ccf2e57` | **semua langkah lulus**; input kernel sama dengan 24 | — |
+
+Hasil percobaan 24 dan 25 (identik):
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.479.080 byte, SHA-256 `92d5a0d62f4cbb224d2b3fc7a14c39c221ef3f2adaef09a4a153ded158c7c887`, UUID `e39686803a0d3a78a1877eca9976b1a5`, 0 import |
+| Link map | storage 12/12, Adreno650 29/29, libPipaGpu 6/6 anggota; tidak ada duplicate symbol |
+| Simbol | storage 385, GPU 419 dari kernel; 0 tak terdefinisi; `bsd_init.o` memanggil `pipa_board_start` |
+| Kernel collection | 135.217.152 byte, SHA-256 `fbc82f2247ea5c2026759db4e67f908b7567755d5fbb6f7a68238e2c74db7671`, UUID `29f1b7a9e6a8f673fb8297457a4ba754`, `missing`/`stubbed` {}, `mapping_complete` true, 87 kext |
+| Batas prelink | `__TEXT` `0x190000`, sisa 10.208; `__DATA_CONST` sisa 902.184; `__TEXT_EXEC` sisa 5.242.880 |
+| Build kedua (dari nol, prelink kedua) | kernel native, UUID, link map (9.528.859 byte, SHA-256 `70bb0076…`), 26.078 simbol eksternal, kernel collection: **identik**, di kedua run |
+| Antar-run (24 vs 25) | kernel native dan kernel collection sama |
+
+Penghematan `__TEXT`: GpuProbe dan presenter menambah ±6,4 KB string dan konstanta ke kernel UFS, yang tinggal 10.208 byte sisa halaman. Ambang teks assert 40 (bukan 48) untuk kernel ini saja: pemeriksaan, trap dan file:line tetap. Alternatif memindah string board ke `__DATA_CONST` ditolak karena os_log membuang format yang tidak ada di `__TEXT` image-nya (`libkern/os/log.c` `resolve_dso`): log IOLog akan hilang dari unified log.
+
+Riset di run yang sama: `legacy_display_abi_probe.py` (lihat `docs/display-touch.md`) dan evaluasi compile touch (GENI SPI, NT36532, `TouchProbe.cpp`, `TouchState.cpp`: ter-compile; kurang `native_touch_firmware[_size]`).
+
+Kernel generik, UFS dan GPU tunggal belum dibangun ulang dengan input sesi 10 (rantai 123 menggeser nomor baris `bsd_init.c`, jadi hash-nya akan berubah walau kodenya tidak).

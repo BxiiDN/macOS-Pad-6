@@ -4,6 +4,10 @@ Diperbarui: 2026-11-12 (sesi 9). Baseline sesi: `4b5b53b`. Semua angka di bawah 
 
 **Ringkasan.** Tiga konfigurasi kernel pipa ter-compile, ter-link dan ter-prelink dengan kernelcache 26.5 di runner macOS, masing-masing dengan 0 import chained fixup dan 0 simbol tak ter-resolve, dan build kedua dari nol identik bit demi bit: generik, dengan storage UFS (probe-only), dan dengan **Adreno650** ([run 43150998287](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43150998287)). Empat simbol yang dulu kurang untuk Adreno650 kini didefinisikan oleh kode nyata (presenter GopFramebuffer dan ekspor log di memori), bukan stub. Ter-link bukan berarti berfungsi: tidak ada yang memanggil driver GPU di kernel macOS, dan tidak ada bukti perangkat keras untuk GPU, display, touch, maupun storage.
 
+## Sesi 10: kernel uji pertama
+
+`pipa_macos26_ufs_gpu_defconfig` (storage probe-only + Adreno650 + jalur start board) ter-compile, ter-link dan ter-prelink, dengan build kedua dan run kedua identik ([run 43170501593](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43170501593), [43172672651](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43172672651)); `bsd_init` kini memanggil `pipa_board_start` (presenter GOP dengan `pipa-gop=1`, bring-up GPU dengan `pipa-gpu=<1..11>`, mode tulis butuh `pipa-gpu-writes=1`); Adreno650 versi macOS memberi hak server render ke WindowServer. Laporan kesiapan boot dengan tiga kategori: [boot-readiness.md](boot-readiness.md). Bagian di bawah ini adalah keadaan sesi 9.
+
 ## Konfigurasi
 
 | | `pipa_macos26_defconfig` (generik) | `pipa_macos26_ufs_defconfig` | `pipa_macos26_gpu_defconfig` (baru) |
@@ -13,7 +17,7 @@ Diperbarui: 2026-11-12 (sesi 9). Baseline sesi: `4b5b53b`. Semua angka di bawah 
 | Hasil terakhir | [run 43145263703](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145263703): 0 anggota arsip ter-link, `__TEXT` `0x188000`, reproducible | [run 43149085043](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43149085043): 12 anggota ter-link, `__TEXT` `0x190000`, reproducible | [run 43150998287](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43150998287): 31 anggota ter-link, `__TEXT` `0x188000`, reproducible |
 | Perangkat lain | — | file hanya di `devices/pipa` | file hanya di `devices/pipa` |
 
-Setiap kernel step membangun **semua** arsip board (storage, Adreno650, libPipaGpu); defconfig yang menentukan mana yang di-link, dan `--linked yes|no` memeriksa link map. Rantai patch tetap 122/122.
+Setiap kernel step membangun **semua** arsip board (storage, Adreno650, libPipaGpu); defconfig yang menentukan mana yang di-link, dan `--linked yes|no` memeriksa link map. Rantai patch 122/122 di sesi 9; 123/123 sejak sesi 10 (`zzzzd`).
 
 ## 1. Empat simbol Adreno650 (G3)
 
