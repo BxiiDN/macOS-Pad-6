@@ -17,8 +17,8 @@ The recipe's IOStorageFamily headers come from apple-oss-distributions/IOStorage
 
 Checks on the archive (nm, strings): the pipa entry points are defined (native_source_storage_start,
 native_source_root_policies_load, native_verified_block_root_authorized, boot_log_tick, boot_reset_bootloader,
-native_ufs_source_create); the UFS object looks for "qcom,sm8250-ufshc" and not "qcom,sm8550-ufshc"; the root
-policy bundle is empty. A built archive proves compilation against xnu-12377 headers only, not that it works.
+native_ufs_source_create); NativeUfs was compiled with -DNATIVE_UFS_SM8250=1 (its recorded command line) and holds
+no "qcom,sm8550-ufshc"; the root policy bundle is empty. A built archive proves compilation against xnu-12377 headers only, not that it works.
 
 SPDX-License-Identifier: BSD-2-Clause-Patent
 """
@@ -151,15 +151,21 @@ def check_archive(tree):
     defined = {line.split()[0].lstrip("_") for line in nm if len(line.split()) > 1 and line.split()[1] in "TSDBC"}
     missing = [s for s in REQUIRED_SYMBOLS if s not in defined]
     ufs = sorted(out.glob("NativeUfs*.o"))
-    strings = run(["strings", "-a", ufs[0]]) if ufs else ""
+    strings = "".join(run(["strings", "-a", o]) for o in ufs)
+    # The SoC switch as the compiler saw it: the recipe writes each source's command line next to its object. The
+    # literal itself may not survive in the object (the compiler can fold a short compare into immediates), so the
+    # strings are reported but the command decides.
+    command = out / "NativeUfs.command.json"
+    args = json.loads(command.read_text()) if command.is_file() else []
     bundle = (out / "root-policies.bin").read_bytes() if (out / "root-policies.bin").is_file() else b""
     result = {"archive": str(archive), "bytes": archive.stat().st_size, "missing_symbols": missing,
-              "probe_sm8250": "qcom,sm8250-ufshc" in strings, "probe_sm8550": "qcom,sm8550-ufshc" in strings,
+              "ufs_defines": [a for a in args if a.startswith("-DNATIVE_UFS_")],
+              "strings_sm8250": "qcom,sm8250-ufshc" in strings, "strings_sm8550": "qcom,sm8550-ufshc" in strings,
               "policy_bundle_bytes": len(bundle), "policy_count": int.from_bytes(bundle[16:24], "little") if len(bundle) >= 24 else None,
               "report": json.loads((out / "report.json").read_text()) if (out / "report.json").is_file() else None}
     problems = [f"undefined pipa entry points: {missing}"] if missing else []
-    if not result["probe_sm8250"] or result["probe_sm8550"]:
-        problems.append("the UFS object does not look for qcom,sm8250-ufshc only")
+    if "-DNATIVE_UFS_SM8250=1" not in result["ufs_defines"] or result["strings_sm8550"]:
+        problems.append(f"NativeUfs was not compiled for SM8250 (defines {result['ufs_defines']})")
     if result["policy_count"] != 0:
         problems.append(f"root policy bundle holds {result['policy_count']} policies; pipa ships none")
     result["problems"] = problems

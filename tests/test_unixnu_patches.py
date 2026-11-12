@@ -62,6 +62,10 @@ class Series(unittest.TestCase):
         self.assertIn("-  if (vm_map_protect (kernel_map", ufs)
         self.assertIn("+  if (mach_vm_protect (kernel_map, verifiedStorage, verifiedStorageBytes,", ufs)
         self.assertIn("TRUE, VM_PROT_READ", ufs)
+        # The factory SourceStorage.cpp calls, only under the source API.
+        factory = pu.unixnu_patches(pu.FEED_PATCHES["ShengUfs"])[1].read_text()
+        self.assertIn('+extern "C" IOService *native_ufs_source_create (void)', factory)
+        self.assertIn("+#if defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API", factory)
 
 
 @unittest.skipUnless(HAVE_UNIXNU, "needs the UniXNU submodule")
