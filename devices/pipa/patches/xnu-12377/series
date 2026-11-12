@@ -8,6 +8,8 @@
 #    the kernel's __TEXT fits the 26.5 collection; see its header
 #  - zzzzc-pipa-source-storage-start.patch: calls the source storage runtime after vfsinit, compiled only with
 #    XNU_PIPA_SOURCE_STORAGE (pipa_macos26_ufs_defconfig); see its header
+#  - zzzzd-pipa-board-start.patch: calls the board's display presenter and GPU bring-up after it, compiled only with
+#    XNU_PIPA_BOARD_START (pipa_macos26_gpu_defconfig, pipa_macos26_ufs_gpu_defconfig); see its header
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 zzyf-pipa-amp.patch
 null-pac-armv82.patch
@@ -15,3 +17,4 @@ fge-armv82.patch
 zzzz-pipa-macos-absent-features.patch
 zzzzb-pipa-long-assert-text.patch
 zzzzc-pipa-source-storage-start.patch
+zzzzd-pipa-board-start.patch

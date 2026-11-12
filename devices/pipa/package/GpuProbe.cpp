@@ -31,6 +31,11 @@
 //      every 2 s with the interrupts, fence waits, submissions and user clients, and the CP's state once it stops moving.
 //  12  as 11, then the staged accelerator for the original Metal discovery (UniXNU-sheng's publishMetal, UniXNU-tb128fu's
 //      naMetal); the Metal plugin and Turnip come from the GPU addon (sheng-gpu-addon=1) and the owner trust module.
+// macOS 26.5 (PIPA_GPU_MACOS=1, devices/pipa/scripts/build-pipa-gpu.py; started by pipa_board_start, PipaBoardStart.c): the
+// same stages, with three differences. Mode 12 does not exist (the staged AGXAccelerator binds the iPadOS IOAcceleratorES
+// class), so the mode is capped at 11. Every mode that writes a register (2 and up) also needs pipa-gpu-writes=1; without it
+// the probe runs mode 1 (reads only) and says so. The rows go to the kernel log (IOLog) when they change, since BootRamoops.c is
+// the iPadOS kernel's. The firmware objects come from build-pipa-gpu.py: empty unless the build machine has the images.
 // The rows below go to the kernel log whenever they change (BootRamoops.c). The sequence starts 5 s after the late probe, so the
 // display and the log thread already run if a read hangs the bus. Modes 1-12 ran on the tablet on 2026-10-24; until APRIV was set
 // every UCHE read ended in UCHE_OOB_ACCESS and Metal's frames were all zero (see the README).
@@ -48,6 +53,11 @@
 #include <kern/clock.h>
 #include <pexpert/pexpert.h>
 #include <string.h>
+#if defined(PIPA_GPU_MACOS) && PIPA_GPU_MACOS
+#define PIPA_GPU_MACOS_BUILD 1
+#else
+#define PIPA_GPU_MACOS_BUILD 0
+#endif
 extern "C" {
 #include "GpuPowerBoard.h"
 #include "A650Gmu.h"
@@ -65,12 +75,14 @@ boolean_t ml_get_interrupts_enabled(void);
 boolean_t ml_at_interrupt_context(void);
 int get_preemption_level(void);
 IOReturn armcpu_spi_attach(uint32_t intid, bool edge, void (*handler)(void *), void *context, uint32_t *readback, uint64_t *router);
+#if !PIPA_GPU_MACOS_BUILD
 // The staged AGXAccelerator (drivers/Adreno650/NativeAdrenoAccelerator.cpp, build-adreno740-accelerator.py --component Adreno650): its static
 // initializer runs only after the original IOGPUFamily kext has loaded, because the parent metaclass does not exist before that.
 void native_adreno_accelerator_static_init(void) __asm__("__GLOBAL__sub_I_NativeAdrenoAccelerator.cpp");
 IOService *native_adreno_accelerator_allocate(void);
 unsigned native_adreno_accelerator_instance_size(void);
 kern_return_t OSKextLoadKextWithIdentifier(const char *);
+#endif
 extern kmod_info_t g_kernel_kmod_info;
 // Fence waits that slept until a GPU interrupt or spun.
 volatile uint64_t native_gpu_idle_sleeps, native_gpu_idle_spins;
@@ -151,7 +163,25 @@ int wr(void *, unsigned w, uint32_t off, uint32_t value) {
     return 0;
 }
 
+#if PIPA_GPU_MACOS_BUILD
+// The rows as last logged; a row is logged again only when its text changed.
+char gLogged[kRows][120];
+IOLock *gLogLock;
+void changed() {
+    native_gpu_changes = native_gpu_changes + 1;
+    if (!gLogLock) return;
+    IOLockLock(gLogLock);
+    for (unsigned i = 0; i < kRows; ++i) {
+        if (!native_gpu_rows[i][0] || !strncmp(gLogged[i], native_gpu_rows[i], sizeof gLogged[i])) continue;
+        memcpy(gLogged[i], native_gpu_rows[i], sizeof gLogged[i]);
+        gLogged[i][sizeof gLogged[i] - 1] = 0;
+        IOLog("pipa-gpu: %s\n", gLogged[i]);
+    }
+    IOLockUnlock(gLogLock);
+}
+#else
 void changed() {native_gpu_changes = native_gpu_changes + 1;}
+#endif
 void rowsBasic(const gpb_result &r) {
     snprintf(native_gpu_rows[kRowSummary], sizeof native_gpu_rows[0], "GPU m%u gcc=%s cc=%s smmu=%s gpu=%s io=%d cx%u clocks%u ahb%u",
              r.mode, gpb_state_text(r.gcc), gpb_state_text(r.cc), gpb_state_text(r.smmu), gpb_state_text(r.gpu), r.io_error,
@@ -1183,6 +1213,7 @@ bool selfTest() {
     return ok;
 }
 
+#if !PIPA_GPU_MACOS_BUILD
 // Mode 12: the staged AGXAccelerator for the original Metal discovery (sheng publishMetal, UniXNU-tb128fu naMetal). The plugin
 // bundle arrives through the boot-time addon mount (sheng-gpu-addon=1) and the owner trust module; the render server is the one
 // process granted its client, with the two that crashed in CoreImage's OpenGL ES path without a Metal device on UniXNU-tb128fu.
@@ -1261,6 +1292,7 @@ bool metal() {
     changed();
     return true;
 }
+#endif
 
 // Where the CP stands when it stops moving. Once a submission is outstanding and RPTR, IB1 base and IB1 remaining dwords are the
 // same as one beat (2 s) before, the rows are refreshed (the ring itself may be drained: RPTR passes an IB's packet when the CP
@@ -1415,7 +1447,11 @@ void gpuThread(void *, wait_result_t) {
     const bool irq = gMode >= 10 && cp && leaveSecure() && gpuInterrupt();
     if (irq) regDump("init");
     if (gMode >= 11 && irq && publish()) {
+#if PIPA_GPU_MACOS_BUILD
+        selfTest();
+#else
         if (selfTest() && gMode >= 12) metal();
+#endif
         native_gpu_step = 99;
         heartbeat();
     }
@@ -1426,7 +1462,21 @@ void gpuThread(void *, wait_result_t) {
 extern "C" void native_gpu_probe(void) {
     unsigned mode = 0;
     if (gMode || !PE_parse_boot_argn("pipa-gpu", &mode, sizeof mode) || !mode) return;
+#if PIPA_GPU_MACOS_BUILD
+    // Modes 2 and up write clock, power, GMU and GPU registers: on macOS only with a second, explicit argument.
+    unsigned writes = 0;
+    PE_parse_boot_argn("pipa-gpu-writes", &writes, sizeof writes);
+    const unsigned asked = mode;
+    if (mode > 11) mode = 11;
+    if (mode > 1 && writes != 1) mode = 1;
+    gLogLock = IOLockAlloc();
+    IOLog("pipa-gpu: pipa-gpu=%u asked, mode %u runs (%s)\n", asked, mode,
+          mode == asked ? "as asked" : asked > 11 ? "mode 12 is the iPadOS Metal accelerator; none on macOS" :
+          "modes above 1 write registers and need pipa-gpu-writes=1");
+    gMode = mode;
+#else
     gMode = mode > 12 ? 12 : mode;
+#endif
     thread_t thread = nullptr;
     if (kernel_thread_start(gpuThread, nullptr, &thread) == KERN_SUCCESS) thread_deallocate(thread);
 }

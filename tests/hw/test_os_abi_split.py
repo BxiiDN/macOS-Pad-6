@@ -22,7 +22,8 @@ class Split(unittest.TestCase):
         macos = {f for f, r in self.rows.items() if "macos" in r["kernels"] and f.endswith((".c", ".cpp"))}
         # The storage recipe's five, the A650 cold start of Adreno650, the export of libPipaGpu.a.
         self.assertEqual(macos, {"SourceStorage.cpp", "SourceRootPolicies.cpp", "SourceRootBinding.cpp", "BootLog.c",
-                                 "BootReset.c", "A650Gmu.c", "BootLogExport.c"})
+                                 "BootReset.c", "A650Gmu.c", "BootLogExport.c", "GpuProbe.cpp", "PipaGop.cpp",
+                                 "PipaBoardStart.c"})
 
     def test_macos_kernel_names_no_ipados_interface(self):
         for f, r in self.rows.items():
@@ -31,10 +32,17 @@ class Split(unittest.TestCase):
 
     def test_ipados_bring_up_stays_out(self):
         for f in ("LegacyDisplayProbe.cpp", "MdssProbe.cpp", "FlipProbe.cpp", "TouchProbe.cpp", "TouchState.cpp",
-                  "HidInputProbe.cpp", "GpuProbe.cpp", "KeyStoreProbe.cpp", "NativeBattery.cpp", "BootRamoops.c",
-                  "LinkStubs.c"):
+                  "HidInputProbe.cpp", "KeyStoreProbe.cpp", "NativeBattery.cpp", "BootRamoops.c", "LinkStubs.c"):
             self.assertEqual(self.rows[f]["kernels"], ["ipados"], f)
         self.assertIn("IOMobileFramebuffer", self.rows["LegacyDisplayProbe.cpp"]["ipados_only_interfaces"])
+        # GpuProbe.cpp is both kernels' now; its macOS build leaves the iPadOS Metal accelerator (backboardd's grant) out.
+        self.assertEqual(self.rows["GpuProbe.cpp"]["kernels"], ["macos", "ipados"])
+        self.assertIn("backboardd", (oa.PACKAGE / "GpuProbe.cpp").read_text())
+
+    def test_macos_switch(self):
+        text = "a\n#if !PIPA_GPU_MACOS_BUILD\nios\n#else\nmac\n#endif\n#if PIPA_GPU_MACOS_BUILD\nmac2\n#else\nios2\n#endif\n" \
+               "#if OTHER\nboth\n#endif\n"
+        self.assertEqual(oa.macos_code(text).split(), ["a", "mac", "mac2", "both"])
 
     def test_models_are_host_only(self):
         for f in ("PanelLink.h", "PanelBoard.h", "TouchVendor.h", "BacklightBoard.h", "GeniI2cCore.h", "GeniI2cBoard.h",

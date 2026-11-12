@@ -43,10 +43,11 @@ root = "none"
 #    libShengSourceStorage.a; component:RamBlock puts UniXNU's NativeRamBlock.cpp, which that recipe compiles, into the
 #    tree. Linked by pipa_macos26_ufs_defconfig.
 #  - component:Adreno650 runs build-adreno650.py (the fork with patches/adreno650 and its kits AdrenoPM4,
-#    AdrenoFirmware, ArmSmmu4K, which come with it), and build-pipa-gpu.py builds the presenter of GopFramebuffer
-#    (patches/gopframebuffer) and package/BootLogExport.c into libPipaGpu.a: the kernel symbols the fork needs.
-#    GopFramebuffer is selected for that one source; its display drivers are not built. Linked by
-#    pipa_macos26_gpu_defconfig.
+#    AdrenoFirmware, ArmSmmu4K, which come with it, and patches/adreno650 0004: WindowServer as the render server), and
+#    build-pipa-gpu.py builds libPipaGpu.a: the presenter of GopFramebuffer (patches/gopframebuffer) and
+#    package/BootLogExport.c (the kernel symbols the fork needs), and the macOS start path pipa_board_start
+#    (PipaBoardStart.c, PipaGop.cpp, GpuProbe.cpp's macOS build). GopFramebuffer is selected for the presenter only; its
+#    display drivers are not built. Linked by pipa_macos26_gpu_defconfig and pipa_macos26_ufs_gpu_defconfig.
 # With pipa_macos26_defconfig none of these archives is linked and the kernel is the generic one. docs/kernel-build.md.
 [kernel]
 defconfig = "pipa_macos26_defconfig"
@@ -171,9 +172,9 @@ unixnu = "../../third_party/UniXNU"
 
 [package.defconfig]
 "macos-26.5-25F71" = "pipa_macos26_defconfig"
-# pipa_macos26_ufs_defconfig (the same kernel with the source storage linked) and pipa_macos26_gpu_defconfig (with
-# Adreno650 linked) are chosen by name: "defconfig pipa_macos26_ufs_defconfig", as kernel-build.yml does for
-# "[kernel-ufs]" and "[kernel-gpu]".
+# pipa_macos26_ufs_defconfig (the same kernel with the source storage linked), pipa_macos26_gpu_defconfig (with
+# Adreno650 and the board start path linked) and pipa_macos26_ufs_gpu_defconfig (both) are chosen by name: "defconfig
+# pipa_macos26_ufs_defconfig", as kernel-build.yml does for "[kernel-ufs]", "[kernel-gpu]" and "[kernel-ufs-gpu]".
 "ipados-17.7.11-21H461" = "pipa_defconfig"
 
 # ---------------------------------------------------------------------------------------------------------------------

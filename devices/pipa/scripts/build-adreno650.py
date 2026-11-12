@@ -7,7 +7,7 @@ SMMU context and memory (NativeAdrenoGmuContext/Memory), the HFI kit (kits/Adren
 (package/A650Gmu.c). NativeAdrenoService.cpp (sheng's A740 service) stays out; the board probe (package/GpuProbe.cpp,
 pipa-gpu=<mode>) drives these objects. No firmware is embedded here: the GMU, SQE and zap images are the board probe's
 (build-gop-legacy-display.py)."""
-import json, re, subprocess, sys
+import json, os, re, subprocess, sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 c_recipe = json.loads((ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/bsd_init.o.json').read_text().strip().rstrip(','))
@@ -26,6 +26,9 @@ sources += [driver / (name + '.cpp') for name in (
     'NativeAdrenoMemory', 'NativeAdrenoCpu', 'NativeAdrenoVm', 'NativeAdrenoRing', 'NativeAdrenoSubmit', 'NativeAdrenoTimer',
     'NativeAdrenoUserClient', 'NativeAdrenoPublish', 'NativeAdrenoCpInit', 'NativeAdrenoIrq',
     'NativeAdrenoGmuContext', 'NativeAdrenoGmuMemory')]
+# The render server that NativeAdrenoPublish.cpp grants the large window, the mailbox and the export (patches/adreno650/0004):
+# backboardd for iPadOS (the default there), WindowServer for macOS.
+render_server = ['-DNATIVE_ADRENO_RENDER_SERVER="WindowServer"'] if os.environ.get('UNIXNU_XNU_TARGET') == 'macosx' else []
 objects = []
 for source in sources:
     recipe = c_recipe if source.suffix == '.c' else cxx_recipe
@@ -50,7 +53,8 @@ for source in sources:
                 '-I', str(driver), '-Wall', '-Wextra', '-Werror',
                 '-Wno-unused-parameter', '-Wno-incompatible-sysroot', '-Wno-c99-designator',
                 '-Wno-reorder-init-list', '-Wno-deprecated-enum-enum-conversion',
-                '-Wno-unnecessary-virtual-specifier']
+                '-Wno-unnecessary-virtual-specifier', *render_server]
+    (out / (obj.stem + '.command.json')).write_text(json.dumps(command) + '\n')
     result = subprocess.run(command, cwd=recipe['directory'], capture_output=True, text=True)
     if result.returncode:
         sys.exit(str(source) + ':\n' + result.stderr[-2500:])
@@ -71,4 +75,4 @@ required = ('_NativeAdrenoGpuContextBringup', '_NativeAdrenoGpuContextBuffers', 
 absent = [s for s in required if s not in defined]
 if absent:
     sys.exit('Required definitions absent: ' + ', '.join(absent))
-print('PASS: %d NativeAdreno a650 objects archived' % len(objects))
+print('PASS: %d NativeAdreno a650 objects archived; render server %s' % (len(objects), render_server[0].split('=', 1)[1] if render_server else 'backboardd'))

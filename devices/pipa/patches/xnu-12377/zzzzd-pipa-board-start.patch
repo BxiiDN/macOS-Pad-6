@@ -1,0 +1,36 @@
+Start pipa's board drivers (display presenter, GPU) after the source storage, behind XNU_PIPA_BOARD_START.
+
+The same pattern as zzzzc-pipa-source-storage-start.patch: a strong call, compiled only when XNU_PIPA_BOARD_START
+is set, which pipa_macos26_gpu_defconfig and pipa_macos26_ufs_gpu_defconfig do together with force-loading
+libPipaGpu.a (devices/pipa/scripts/build-pipa-gpu.py), where pipa_board_start is defined (package/PipaBoardStart.c).
+pipa_macos26_defconfig and pipa_macos26_ufs_defconfig do not set it: their kernels are unchanged by this patch.
+
+What runs is decided at boot by the board's arguments, none of which board.toml passes:
+  pipa-gop=1           GopFramebuffer's presenter on the firmware frame buffer (package/PipaGop.cpp); maps the frame
+                       buffer the console already uses, writes no register
+  pipa-gpu=<1..11>     the staged Adreno 650 bring-up (package/GpuProbe.cpp, its macOS build): mode 1 reads only;
+                       modes 2 and up write clock, power and GPU registers and also need pipa-gpu-writes=1
+Without them the call returns at once.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -803,6 +803,16 @@ bsd_init(void)
+ 	extern void native_source_storage_start(void);
+ 	native_source_storage_start();
+ #endif
++#if defined(XNU_PIPA_BOARD_START) && XNU_PIPA_BOARD_START
++	/*
++	 * macOS-Pad-6 (pipa): the board's display presenter and GPU bring-up (devices/pipa/package/PipaBoardStart.c,
++	 * linked from libPipaGpu.a). It returns at once unless pipa-gop=1 or pipa-gpu=<mode> is on the command line;
++	 * GPU modes that write registers also need pipa-gpu-writes=1. A strong reference, for the reason
++	 * zzzzc-pipa-source-storage-start.patch gives.
++	 */
++	extern void pipa_board_start(void);
++	pipa_board_start();
++#endif
+ #if DEVELOPMENT || DEBUG
+ 	native_apfs_load_probe();
+ 	native_mobile_graphics_load_probe();

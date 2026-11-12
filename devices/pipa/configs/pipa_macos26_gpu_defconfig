@@ -5,11 +5,13 @@
 #    with patches/adreno650, the a6xx GPU half, the GMU's SMMU context, the HFI kit and package/A650Gmu.c;
 #  - build/pipa-gpu/libPipaGpu.a (build-pipa-gpu.py): GopFramebuffer's NativeGOPPresenter (patches/gopframebuffer) for
 #    the two GPU hand-off entry points, and package/BootLogExport.c (the log export, kept in memory, no UFS).
-# Nothing in this kernel calls into either: no personality matches them, no board probe drives the GPU (the iPadOS
-# kernel's package/GpuProbe.cpp is not part of it) and no presenter is created. The classes register with the kernel's
-# own C++ start, as in UniXNU-pipa's iPadOS kernel, and stay idle. Not set: XNU_NATIVE_ADRENO (its build path names
-# Adreno740's archive), XNU_NATIVE_LEGACY_DISPLAY (no macOS 26.5 class fixtures). Storage is not linked here
-# (pipa_macos26_ufs_defconfig does that). A kernel built from this file has been built on the macOS runner only
+# XNU_PIPA_BOARD_START=1 compiles zzzzd-pipa-board-start.patch: bsd_init calls pipa_board_start (libPipaGpu.a), which
+# starts GopFramebuffer's presenter on the firmware frame buffer with pipa-gop=1 and the staged Adreno 650 bring-up
+# (package/GpuProbe.cpp, macOS build, which drives the Adreno650 objects) with pipa-gpu=<1..11>; modes that write
+# registers also need pipa-gpu-writes=1. board.toml passes none of these, so by default the call returns at once. No
+# personality matches either archive. Not set: XNU_NATIVE_ADRENO (its build path names Adreno740's archive),
+# XNU_NATIVE_LEGACY_DISPLAY (no macOS 26.5 class fixtures). Storage is not linked here (pipa_macos26_ufs_defconfig and
+# pipa_macos26_ufs_gpu_defconfig do that). A kernel built from this file has been built on the macOS runner only
 # (docs/kernel-build.md); it has not run anywhere, and nothing here shows that the GPU works.
 #
 # SPDX-License-Identifier: BSD-2-Clause-Patent
@@ -33,7 +35,7 @@ CONFIG_XNU_ARMVIRT_PLATFORM=n
 # no symbol does. It shortens __TEXT,__cstring (the kernel's __TEXT has to fit the 26.5 collection's __PRELINK_TEXT,
 # docs/kernel-build.md) and makes the kernel independent of where it is built. The first seven flags are
 # build-xnu-4k-baseline.sh's default XNU_EXTRA_CFLAGS, which this setting replaces, unchanged.
-CONFIG_XNU_EXTRA_CFLAGS="-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -fmacro-prefix-map={tree}/.cache/xnu-work/= -fmacro-prefix-map={tree}/="
+CONFIG_XNU_EXTRA_CFLAGS="-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -fmacro-prefix-map={tree}/.cache/xnu-work/= -fmacro-prefix-map={tree}/= -DXNU_PIPA_BOARD_START=1"
 # The kernel link also writes ld64's link map (which object put each atom where), for scripts/kernel_size_audit.py.
 # It is an extra output file only; the linked kernel does not change.
 CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-map,{tree}/build/kernel-link.map -Wl,-force_load,{tree}/build/adreno650/libAdreno650.a -Wl,-force_load,{tree}/build/pipa-gpu/libPipaGpu.a"

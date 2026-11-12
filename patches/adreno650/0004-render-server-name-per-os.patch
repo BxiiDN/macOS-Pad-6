@@ -1,0 +1,63 @@
+From: macOS-Pad-6 <noreply@anthropic.com>
+Subject: [PATCH] NativeAdrenoPublish: the render server is a build setting (WindowServer on macOS)
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+Three rights of the render server are tied to one process name, backboardd, the iPadOS compositor: the large GPU
+window (slot 0), the mailbox page and its poller, and the export method (NativeAdrenoExportMethod, whose pieces go
+to boot_log_export_put). On macOS the compositor is WindowServer and backboardd does not exist, so on a macOS
+kernel none of the three could ever be granted, and granting them to some other process under backboardd's name
+would only move the problem.
+
+This names the process once, NATIVE_ADRENO_RENDER_SERVER, "backboardd" by default (the iPadOS build is unchanged)
+and "WindowServer" when macOS-Pad-6's build-adreno650.py compiles for macOS (UNIXNU_XNU_TARGET=macosx). One name per
+build: on macOS backboardd gets nothing a plain process does not get. The comparisons, the piece checks and the
+sizes are unchanged; a static_assert keeps the name within p_comm (16 characters).
+
+Whether WindowServer opens this connection at all depends on a macOS Metal plugin, which does not exist yet; this
+only stops the driver from refusing it by name.
+
+---
+--- a/NativeAdrenoPublish.cpp
++++ b/NativeAdrenoPublish.cpp
+@@ -21,6 +21,13 @@
+ #include "NativeAdrenoUserClient.h"
+ 
+ extern "C" void proc_selfname(char *, int);
++/* The render server: the process that composites the screen, takes the large GPU window (slot 0), owns the mailbox and may
++ * send the export. backboardd on iPadOS; a macOS build names WindowServer (-DNATIVE_ADRENO_RENDER_SERVER="WindowServer",
++ * macOS-Pad-6's build-adreno650.py). One name per build: the other OS's process gets no render-server rights. */
++#ifndef NATIVE_ADRENO_RENDER_SERVER
++#define NATIVE_ADRENO_RENDER_SERVER "backboardd"
++#endif
++static_assert(sizeof(NATIVE_ADRENO_RENDER_SERVER) <= 17, "a process name (p_comm) is at most 16 characters");
+ /* The plugin's telemetry table (rows of text the Metal bridge keeps), sent as markers: 0xC000|row starts a row, 0x8000|(a<<7)|b appends two characters. */
+ extern "C" {char native_adreno_metal_rows[48][96];volatile uint32_t native_adreno_metal_rows_seq;}
+ 
+@@ -231,7 +238,7 @@
+     unsigned slot=NativeAdrenoMaxClients;
+     if(kernel)slot=g.kernel_client?NativeAdrenoMaxClients:0;
+     else {
+-        if(!strncmp(name_,"backboardd",sizeof name_) && !g.slots[0])slot=0;
++        if(!strncmp(name_,NATIVE_ADRENO_RENDER_SERVER,sizeof name_) && !g.slots[0])slot=0;
+         for(unsigned i=1;slot==NativeAdrenoMaxClients && i<NativeAdrenoMaxClients;++i)if(!g.slots[i])slot=i;
+     }
+     const IOReturn opened=slot<NativeAdrenoMaxClients?core->open(NativeAdrenoAbiVersion,g.vm,g.submit,g.ring,g.input_bits,g.output_bits):kIOReturnNoSpace;
+@@ -252,7 +259,7 @@
+         }
+     }
+     /* The mailbox page and its poller serve the render server's connection only. */
+-    if(ok && !kernel && slot==0 && !strncmp(name_,"backboardd",sizeof name_)) {
++    if(ok && !kernel && slot==0 && !strncmp(name_,NATIVE_ADRENO_RENDER_SERVER,sizeof name_)) {
+         if(!gMailbox) {
+             gMailbox=IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,kIODirectionInOut,4096,4096);
+             if(gMailbox) {gMailboxWords=static_cast<volatile uint32_t *>(gMailbox->getBytesNoCopy());memset(const_cast<uint32_t *>(gMailboxWords),0,4096);}
+@@ -466,7 +473,7 @@
+         Piece piece{};
+         if(input && input_size>=sizeof(piece))memcpy(&piece,input,sizeof(piece));
+         const bool valid=!output_size && input && input_size>=sizeof(piece) && piece.bytes && piece.bytes<=NativeAdrenoExportMaxPiece &&
+-            input_size==sizeof(piece)+piece.bytes && !strncmp(caller,"backboardd",sizeof caller);
++            input_size==sizeof(piece)+piece.bytes && !strncmp(caller,NATIVE_ADRENO_RENDER_SERVER,sizeof caller);
+         const int stored=valid && boot_log_export_put?boot_log_export_put(piece.generation,piece.total,piece.offset,
+             static_cast<const uint8_t *>(input)+sizeof(piece),piece.bytes):-1;
+         if(stored) {native_adreno_export_stats[1]=native_adreno_export_stats[1]+1;return kIOReturnBadArgument;}

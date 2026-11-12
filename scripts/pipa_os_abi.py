@@ -64,6 +64,32 @@ def c_code(text):
     return re.sub(r"//[^\n]*", "", text)
 
 
+# Switches a macOS build of a board source sets: a block under "#if !NAME" (and the "#else" of "#if NAME") is what the
+# iPadOS build compiles and the macOS one leaves out (GpuProbe.cpp's mode 12, the Metal accelerator).
+MACOS_SWITCHES = ("PIPA_GPU_MACOS_BUILD",)
+
+
+def macos_code(text):
+    """c_code(text) as a macOS build sees it: the blocks the macOS switches exclude are removed. Other conditionals are
+    kept whole (both branches count), so an unknown #if can only add interfaces, never hide one."""
+    out, stack = [], []          # stack: None for an unknown #if, else whether the macOS build keeps the current branch
+    for line in c_code(text).splitlines():
+        m = re.match(r"\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b\s*(.*)", line)
+        if m:
+            kind, cond = m.group(1), m.group(2).strip()
+            if kind in ("if", "ifdef", "ifndef"):
+                hit = next((sw for sw in MACOS_SWITCHES if cond in (sw, "!" + sw)), None)
+                stack.append(None if hit is None or kind != "if" else not cond.startswith("!"))
+            elif kind == "else" and stack and stack[-1] is not None:
+                stack[-1] = not stack[-1]
+            elif kind == "endif" and stack:
+                stack.pop()
+            continue
+        if all(keep is not False for keep in stack):
+            out.append(line)
+    return "\n".join(out)
+
+
 def builders():
     board = tomllib.loads((BOARD / "board.toml").read_text())
     plans = {"macos": board["kernel"]["archives"],
@@ -145,7 +171,9 @@ def classify():
             kind = f"{kernels[0]} kernel only"
         else:
             kind = "host model (no kernel compiles it)"
-        markers = sorted({m for m in IPADOS_ONLY if m in c_code((PACKAGE / f).read_text(errors="replace"))})
+        text = (PACKAGE / f).read_text(errors="replace")
+        # For a source the macOS kernel compiles, what its macOS build sees; otherwise the whole file.
+        markers = sorted({m for m in IPADOS_ONLY if m in (macos_code(text) if "macos" in kernels else c_code(text))})
         rows.append({"file": f, "kind": kind, "kernels": kernels, "built_by": sorted(by.get(f, ())),
                      "ipados_only_interfaces": markers})
     return rows

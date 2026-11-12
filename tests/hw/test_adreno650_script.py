@@ -69,7 +69,12 @@ class KnownFailures(unittest.TestCase):
     def test_series_files(self):
         lines = [l for l in (ta.PATCHES / "series").read_text().splitlines() if l.strip() and not l.startswith("#")]
         self.assertEqual(lines, ["0001-vm-map-null-memory.patch", "0002-tests-smmu-peers-accept-tlbival.patch",
-                                 "0003-tests-vm-owned-alias-is-exclusive.patch"])
+                                 "0003-tests-vm-owned-alias-is-exclusive.patch", "0004-render-server-name-per-os.patch"])
+        # 0004: the render server is one name per build, backboardd by default, and every comparison uses it.
+        render = (ta.PATCHES / "0004-render-server-name-per-os.patch").read_text()
+        self.assertIn('+#define NATIVE_ADRENO_RENDER_SERVER "backboardd"', render)
+        self.assertEqual(render.count('-        if(!strncmp(name_,"backboardd"'), 1)
+        self.assertEqual(render.count("NATIVE_ADRENO_RENDER_SERVER,sizeof"), 3)
         for name in lines:
             text = (ta.PATCHES / name).read_text()
             self.assertIn("SPDX-License-Identifier", text)

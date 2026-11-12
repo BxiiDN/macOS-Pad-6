@@ -29,7 +29,8 @@ from pathlib import Path
 
 ARCHIVES = {"Adreno650": "build/adreno650/libAdreno650.a", "PipaGpu": "build/pipa-gpu/libPipaGpu.a"}
 # What the fork needed and the macOS 26.5 kernel alone did not have (kernel-build attempt 15): now libPipaGpu.a's.
-HANDOFF = ("_native_gop_handoff_call", "_native_gop_handoff_memory", "_boot_log_export_put")
+HANDOFF = ("_native_gop_handoff_call", "_native_gop_handoff_memory", "_boot_log_export_put", "_pipa_board_start",
+           "_pipa_gop_start", "_native_gpu_probe")
 
 
 def find_tree(unixnu):
@@ -161,6 +162,23 @@ def main():
             result["problems"].append(f"{len(absent)} symbols neither the archives nor the kernel define: {' '.join(absent)}")
         if not all(result["handoff_defined_by_PipaGpu"].values()):
             result["problems"].append("libPipaGpu.a does not define the hand-off and export symbols")
+        # patches/adreno650/0004: a macOS kernel's Adreno650 names WindowServer as its render server, never backboardd.
+        publish = tree / "build/adreno650/NativeAdrenoPublish.command.json"
+        flags = json.loads(publish.read_text()) if publish.is_file() else []
+        result["render_server_flag"] = [f for f in flags if f.startswith("-DNATIVE_ADRENO_RENDER_SERVER=")]
+        if result["render_server_flag"] != ['-DNATIVE_ADRENO_RENDER_SERVER="WindowServer"']:
+            result["problems"].append(f"NativeAdrenoPublish.cpp was not compiled for WindowServer: {result['render_server_flag']}")
+        pipa_gpu = json.loads((tree / "build/pipa-gpu/build-report.json").read_text())
+        result["firmware"] = pipa_gpu.get("firmware")
+        # The start path (zzzzd-pipa-board-start.patch): XNU's own bsd_init.o calls pipa_board_start exactly when the
+        # GPU archives are linked, so the driver is reached from the kernel's initialisation, not only present.
+        bsd_init = tree / "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/bsd/DEVELOPMENT/bsd_init.o"
+        calls = "_pipa_board_start" in symbols(bsd_init, undefined=True) if bsd_init.is_file() else None
+        result["bsd_init_calls_pipa_board_start"] = calls
+        if args.linked == "yes" and calls is not True:
+            result["problems"].append("bsd_init.o does not call pipa_board_start")
+        if args.linked == "no" and calls:
+            result["problems"].append("bsd_init.o calls pipa_board_start in a kernel without the GPU archives")
         link_map = tree / "build/kernel-link.map"
         result["linked"] = {}
         for name, path in paths.items():
