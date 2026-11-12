@@ -251,3 +251,26 @@ Sumber ketidak-reproducible-an yang diaudit:
 - **Build path**: tidak lagi di `__cstring` karena prefix map, dan tidak ada di string versi (`runner:ios-obj/...`).
 - **Urutan arsip dan nondeterminisme compiler**: tidak ditemukan; tidak ada section lain yang berbeda.
 - **Metadata build**: `LC_UUID` diturunkan dari isi, jadi ikut sama.
+
+### Percobaan 13 — 2026-11-12, commit `3b3e1be`, run [43132343953](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43132343953): **arsip storage pipa ter-compile** (G2)
+
+`[storage-build]`: setelah langkah kernel, `scripts/pipa_storage_build.py` menjalankan resep UniXNU `build-sheng-source-storage.py` (dengan `patches/unixnu` 0001 + 0003) di tree yang sama, dengan env board (`UNIXNU_SOC=SM8250`, `UNIXNU_SOURCE_STORAGE_ROOT=none`, `UNIXNU_KIT=pipa`, target `macosx` 26.5 25F71) dan IOStorageFamily `7edb88fb` (pin resep, sumber publik). Kernel native juga ter-compile dan ter-link di run ini (`227cbe63…`; tanggal build pindah karena input kernel berubah, keputusan 6).
+
+| | |
+| --- | --- |
+| Arsip | `libShengSourceStorage.a`, 1.511.112 byte; **tidak di-link** ke kernel (profil macOS tidak memilih ShengUfs) |
+| Simbol pipa | semua 13 terdefinisi (`native_source_storage_start`, `native_source_root_policies_load`, `native_verified_block_root_authorized`, `native_ufs_source_create`, `boot_log_tick`, `boot_reset_bootloader`, `pipa_storage_decision`, …) |
+| Saklar SoC | perintah compile `NativeUfs.cpp` memuat `-DNATIVE_UFS_SOURCE_API=1 -DNATIVE_UFS_SM8250=1`; tidak ada `qcom,sm8550-ufshc` di objek |
+| Kebijakan root | bundle 32 byte, 0 kebijakan (tidak ada root dari `userdata`) |
+
+Jalan ke sana (setiap kegagalan nyata, diperbaiki di kode, bukan disembunyikan):
+
+| Run | Commit | Berhenti di | Perbaikan |
+| --- | --- | --- | --- |
+| 43100104425 | `930893d` | Board check: seri patch dilaporkan hilang pada checkout `--in-place` | `series_present` membaca file asli dari `git show HEAD:` (`901576d`) |
+| 43100577481 | `901576d` | resep: `tree/drivers/ShengUfs/NativeUfs.cpp` tidak ada (profil macOS tidak memilih ShengUfs/RamBlock/VerifiedRoot) | `ensure_inputs` me-link dari pin `feeds.toml` dan checkout UniXNU (`71a4597`) |
+| 43102116643, 43103297025 | `71a4597`, `ccab691` | 5 error compile `NativeUfs.cpp`, tidak terlihat di log job | error dicetak dari log per sumber resep (`ccab691`, `b01bb09`) |
+| 43105063854 | `b01bb09` | `kma_flags_t`, `KMA_KOBJECT`, `KMA_DATA`, `kmem_free`, `vm_map_protect`: PipaUfs `5c64c01` memakai antarmuka VM kernel iPadOS 17 | `patches/shengufs/0001`: `vm/vm_kern_xnu.h` + `mach_vm_protect`, seperti pin katalog ShengUfs `99d8bcd` (`8234313`) |
+| 43106623934 | `8234313` | arsip jadi; `native_ufs_source_create` tidak terdefinisi; string compatible tidak ada di objek | `patches/shengufs/0002` (factory pin katalog); saklar SoC dicek dari command line (`3b3e1be`) |
+
+Yang dibuktikan: lima sumber package pipa dan PipaUfs (dengan dua patch) ter-compile terhadap header xnu-12377.121.6 yang di-prepare kernel step, sebagai arm64e. Yang tidak: link ke kernel, perilakunya, apa pun di tablet.
