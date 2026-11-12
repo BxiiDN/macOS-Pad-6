@@ -111,7 +111,9 @@ def main():
             recipe = c_recipe if path.suffix == ".c" else cxx_recipe
             extra = [] if path.suffix == ".c" else ["-Wno-unused-parameter", "-Wno-c99-designator",
                                                      "-Wno-reorder-init-list", "-Wno-unnecessary-virtual-specifier"]
-            command = command_for(recipe, path, obj, includes + extra)
+            # The relaxations after -Wall -Wextra, which would turn them back on (-Wreorder-init-list fired in
+            # XNU's own IOMallocType macro).
+            command = command_for(recipe, path, obj, includes) + extra
             p = subprocess.run(command, cwd=recipe["directory"], capture_output=True, text=True)
             row = {"group": group, "compiled": p.returncode == 0, "stderr": p.stderr[-3000:]}
             # The backlight group must build (it is the one meant for this kernel); the touch group is an evaluation of
