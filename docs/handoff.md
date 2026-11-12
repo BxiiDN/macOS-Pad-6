@@ -2,7 +2,7 @@
 
 Untuk sesi berikutnya. Baca ini dulu; jangan ulangi riset atau langkah yang sudah tercatat di sini.
 
-Diperbarui: 2026-11-12 (sesi 8: kesiapan integrasi kernel; baseline sesi `92bd286`). Laporan kesiapan: [kernel-integration.md](kernel-integration.md). Cabang kerja: `board-migration-wip` (PR #1 ke `main`). `main` tidak diubah sejak `5b89722`.
+Diperbarui: 2026-11-12 (sesi 9: simbol Adreno650, kernel GPU, audit display; baseline sesi `4b5b53b`). Laporan kesiapan: [kernel-integration.md](kernel-integration.md). Cabang kerja: `board-migration-wip` (PR #1 ke `main`). `main` tidak diubah sejak `5b89722`.
 
 ## Target (tetap)
 
@@ -19,11 +19,13 @@ macOS Tahoe **26.5 (25F71)**, XNU **12377.121.6** (`ac9718fb1af6`), Xiaomi Pad 6
 | Build reproducible | **ya** (kernel `ce13aea1…`, kernel collection `840488d5…`) | percobaan 9, 12 |
 | Prelink dengan kernelcache 26.5 | **berhasil**: `MH_FILESET` arm64e 135.036.928 byte, 0 import | percobaan 9–12 |
 | **Kernel dengan storage UFS** (`pipa_macos26_ufs_defconfig`) | **compile + link + prelink berhasil**: native `6955fd3c…`, kernel collection `9465acd4…` 135.102.464 byte, 0 import, `missing`/`stubbed` {}, sisa `__PRELINK_TEXT` 10.208 byte | `docs/kernel-build.md` percobaan 15 |
+| **Kernel dengan Adreno650** (`pipa_macos26_gpu_defconfig`) | **compile + link + prelink berhasil**, reproducible: GPU_ROW | `docs/kernel-build.md` percobaan 17–18, 21 |
+| Revalidasi kernel generik dan UFS (input sesi 9) | GEN_ROW; UFS_ROW | percobaan 19–20 |
 | `pacstrip` + gerbang ISA, payload, boot image, boot di tablet | **belum** (ditunda atas instruksi pemilik) | |
 | **G2 UFS** | patch UniXNU `0001` (`NATIVE_UFS_<SoC>`) + `0003` (storage tanpa root); lima sumber package storage pipa (baca-saja, tanpa root userdata, tanpa tulis UFS); patch feed PipaUfs `patches/shengufs/0001`–`0002`; patch `0004` (tanpa root → probe-only: tanpa publikasi blok/root); arsip **di-link** oleh `pipa_macos26_ufs_defconfig` (12 anggota, 385 simbol kernel ter-resolve, 0 konflik); berjalan hanya dengan `native-source-storage=1` + `native-ufs-probe` ∈ {2,6,7,8} | percobaan 13–15, `PipaStorageGuard.h` |
-| **G3 Adreno 650** | known-fail alias BO **selesai** (test basi, `patches/adreno650/0003` = upstream `d834731`; arm64 patched: 18 lulus, 0 known-fail); fork **ter-compile terhadap xnu-12377** (29 objek), 4 simbol kernel tidak ada (GopFramebuffer handoff, ekspor log); tidak di-link | `scripts/gen_pipa_gmu.py`, `scripts/test_adreno650.py`, `patches/adreno650/` |
-| **GENI I2C / KTZ8866** | shim kernel `PipaBacklight.c` (baca-saja, `pipa-backlight=1`); **audit statis**: tulis hanya lewat callback engine ke register transfer, register konfigurasi tidak pernah ditulis, tulis KTZ8866 terkunci; diuji pada tablet simulasi; belum di-link | `package/PipaBacklight.c`, `GeniI2cBoard.h`, `PipaBacklightTests.c` |
-| **Display / touch** | reset TLMM 75 (setiap pengguna di DT vendor = reset panel DSI/pin state `sde_dsi`; cek pin state baca-saja); `PanelLink.h`: dua host DSI + DSC 1.1 rate control (= Linux, nilai dihitung tangan); varian TM/CSOT dipisah; firmware NT36532 per varian, **tidak ada untuk panel tak dikenal** | `docs/display-touch.md`, `PanelLink.h`, `TouchVendor.h` |
+| **G3 Adreno 650** | known-fail alias BO selesai (sesi 8); empat simbol yang kurang **didefinisikan kode nyata** di `libPipaGpu.a`: presenter GopFramebuffer (`patches/gopframebuffer/0001`, tanpa `NativeLegacyDisplay`) dan `package/BootLogExport.c` (ekspor di memori, tanpa UFS); **di-link** oleh `pipa_macos26_gpu_defconfig` (31 anggota, 398 simbol, 0 tak ter-resolve). Tidak ada pemanggil driver; presenter tidak dibuat; ekspor fork hanya menerima `backboardd` | `build-pipa-gpu.py`, `pipa_adreno_xnu_check.py` |
+| **GENI I2C / KTZ8866** | shim kernel `PipaBacklight.c` (baca-saja, `pipa-backlight=1`); **audit statis**: tulis hanya lewat callback engine ke register transfer, register konfigurasi tidak pernah ditulis, tulis KTZ8866 terkunci; diuji pada tablet simulasi; **ter-compile terhadap xnu-12377** (`pipa_board_xnu_check.py`), simbolnya ada di kernel; belum di-link | `package/PipaBacklight.c`, `GeniI2cBoard.h`, `PipaBacklightTests.c` |
+| **Display / touch** | pemisahan iPadOS/macOS dari resep build (`scripts/pipa_os_abi.py`: kode kernel macOS tidak menyebut antarmuka iPadOS; 21 berkas bring-up hanya iPadOS; model panel/touch/backlight = model host); reset TLMM 75 (setiap pengguna di DT vendor = reset panel DSI/pin state `sde_dsi`; cek pin state baca-saja); `PanelLink.h`: dua host DSI + DSC 1.1 rate control (= Linux, nilai dihitung tangan); varian TM/CSOT dipisah; firmware NT36532 per varian, **tidak ada untuk panel tak dikenal** | `docs/display-touch.md`, `PanelLink.h`, `TouchVendor.h` |
 | **G6 memori** | sisi kernel tabel rentang terlarang dimodelkan; 6 GiB = maksimum kolam bootstrap 4 KiB di setiap base dan slide; **audit alamat** (DTS = board, jendela di satu bank, head, image ≥ kernel collection, rentang terlarang) | `scripts/pipa_memory.py`, `tests/hw/test_pipa_memory.py` |
 | **Fuel gauge / charger** | PM8150B FG gen4 + SMB5, charge pump bq2597x, profil baterai: 22 fakta = DT vendor | `docs/power-supply.md`, `PowerSupplyBoard.h` |
 
@@ -31,9 +33,9 @@ macOS Tahoe **26.5 (25F71)**, XNU **12377.121.6** (`ac9718fb1af6`), Xiaomi Pad 6
 
 | Jenis | Yang terbukti | Yang tidak |
 | --- | --- | --- |
-| **Build** (runner `macos-26`) | kernel generik dan kernel dengan storage UFS ter-compile, ter-link, ter-prelink (run 43138111458); arsip storage ter-link (link map); Adreno650 ter-compile terhadap record compile kernel ini | bahwa kernel berjalan; bahwa storage atau GPU bekerja |
+| **Build** (runner `macos-26`) | kernel generik, UFS, dan GPU ter-compile, ter-link, ter-prelink, masing-masing reproducible (sesi 9); arsip storage/Adreno650/libPipaGpu ter-link hanya di defconfig-nya (link map); `PipaBacklight.c` ter-compile | bahwa kernel berjalan; bahwa storage, GPU, display bekerja |
 | **Analisis statis** | rantai 122/122; board di-resolve; DTS → ADT; 52 konstanta = DT mainline; **107 fakta driver** = sumber Linux (GENI/KTZ8866/GCC/TLMM 95, DSC 12); **82 fakta = DT vendor Xiaomi**; 50/50 konstanta A650 GMU; audit tulis backlight | perilaku perangkat keras |
-| **Host test** | 137 unit test Python; **13 host test C** paket board di x86 (14 di arm64 dengan `A650GmuTests`); shim backlight pada tablet simulasi + cek sintaks mode kernel; fork Adreno650 pin (2 known-fail tercatat) dan patched (0 known-fail); `MemoryWindow.h` + model kernel pada peta pipa | perilaku chip: register disimulasikan, peta memori dimodelkan |
+| **Host test** | 141 unit test Python (1 dilewati); **14 host test C** paket board di x86 (14 di arm64 dengan `A650GmuTests`); shim backlight pada tablet simulasi + cek sintaks mode kernel; fork Adreno650 pin (2 known-fail tercatat) dan patched (0 known-fail); `MemoryWindow.h` + model kernel pada peta pipa | perilaku chip: register disimulasikan, peta memori dimodelkan |
 | **Perangkat nyata** | **tidak ada** oleh repo ini | — |
 
 Yang dilaporkan berjalan di tablet (iPadOS 17: UFS, layar frame buffer, touch, tombol, GPU/Metal) adalah klaim upstream UniXNU-pipa, tidak diulang di sini.
@@ -60,7 +62,8 @@ Build kernel dan arsip storage hanya di runner `macos-26` (`.github/workflows/ke
 
 - `[kernel-build]` di pesan commit: fetch, defconfig, compile + link, laporan; `[kernel-prelink]`: + prelink; `[kernel-repro]`: build kedua dibandingkan;
 - setiap kernel step membangun arsip storage (`component:ShengUfs`); `scripts/pipa_storage_build.py --check-only --linked yes|no` memeriksa simbol, saklar SoC/probe-only dari command line, bundle kebijakan kosong, simbol yang dibutuhkan dari kernel, dan link map;
-- `[kernel-ufs]`: `pipa_macos26_ufs_defconfig` (storage di-link); `scripts/pipa_adreno_xnu_check.py` mengompilasi Adreno650 dengan record compile kernel dan mencari simbolnya di kernel (tidak di-link);
+- `[kernel-ufs]`: `pipa_macos26_ufs_defconfig` (storage di-link); `[kernel-gpu]`: `pipa_macos26_gpu_defconfig` (Adreno650 + libPipaGpu di-link). Setiap kernel step membangun `component:Adreno650` dan `build-pipa-gpu.py`; `scripts/pipa_adreno_xnu_check.py --linked yes|no` memeriksa simbol kedua arsip terhadap kernel, link map, dan ukuran per section; `scripts/pipa_board_xnu_check.py` mengompilasi `PipaBacklight.c`;
+- `[kernel-repro]` membangun ulang defconfig yang sama; jangan gabung `[kernel-ufs]` dan `[kernel-gpu]` (workflow menolaknya);
 - `workflow_dispatch` baru bisa setelah workflow ada di `main`.
 
 Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (unduhan artefak diblokir proxy sesi Claude).
@@ -68,8 +71,8 @@ Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (u
 ## Kendala yang ditemukan
 
 - **G2**: storage di-link hanya pada `pipa_macos26_ufs_defconfig`; yang diizinkan hanya inspeksi register (`native-ufs-probe` 2, 6, 7, 8); perilakunya di tablet belum diuji. Root macOS tetap tidak ada: `[storage] root = "none"`, dan dengan probe-only kode publikasi blok/root tidak di-compile. Root di `userdata` menghapus Android; alternatif UniXNU mengubah tabel partisi — keduanya butuh keputusan pemilik. Patch `0001`, `0003`, `0004` dan `patches/shengufs` belum dikirim ke upstream.
-- **Ruang prelink**: dengan storage, sisa `__PRELINK_TEXT` 10.208 byte (generik: 42.976). Komponen berikutnya (backlight, GPU) harus diukur; `prelink_layout.py` menunjukkan sisanya.
-- **G3**: Adreno650 butuh `native_gop_handoff_call`, `native_gop_handoff_memory` (GopFramebuffer, hanya ABI iPadOS) dan `boot_log_export_put` (weak import; ekspor log sheng) — tidak ada di kernel macOS ini. Weak import yang tak terdefinisi juga akan menjadi import chained fixup yang ditolak XnuPrelink. Tanpa patch fork: `test_gmumap` dan `test_vm` known-fail (peer SMMU basi). `test_client`, `test_submit`, `test_userclient` dilewati di host (butuh `kern/cpu_data.h`), tetapi ikut ter-compile di runner macOS terhadap header XNU.
+- **Ruang prelink**: sisa `__PRELINK_TEXT` 42.976 byte (generik dan GPU: Adreno650 tidak menambah halaman `__TEXT`), 10.208 byte (UFS). `__DATA_CONST` sisa ±918 KB, `__TEXT_EXEC` ±5,3 MB (`prelink_layout.py`). Memindah `__cstring` ke `__DATA_CONST` dievaluasi dan ditinggalkan (tidak perlu; sedikit melemahkan perlindungan sebelum lockdown).
+- **G3**: driver ter-link tetapi tidak ada pemanggil macOS (`GpuProbe.cpp` adalah bring-up iPadOS yang menulis register GPU, sengaja tidak dipakai); presenter GopFramebuffer tidak dibuat (butuh titik attach frame buffer di macOS); metode ekspor fork hanya menerima `backboardd`; blob ekspor tidak bertahan melewati restart; Metal macOS butuh plugin macOS. Apple clang membuat `l_<fungsi>.ptrauth` untuk fungsi weak-import (nm menyebutnya undefined): cek memeriksa targetnya. Tanpa patch fork: `test_gmumap` dan `test_vm` known-fail (peer SMMU basi). `test_client`, `test_submit`, `test_userclient` dilewati di host (butuh `kern/cpu_data.h`), tetapi ikut ter-compile di runner macOS terhadap header XNU.
 - **GENI / backlight**: shim belum masuk arsip kernel; tidak ada nilai `DEVICE_ID` yang diharapkan di sumber publik; clock wrap1/s3 dan pin dianggap disiapkan firmware (shim menolak bila tidak, tanpa memperbaikinya).
 - **Display**: membaca MDSS dari XNU pernah menyebabkan SError fatal (`MdssProbe.cpp`); panel penuh butuh driver clock/GDSC MDSS lebih dulu. Identitas panel saat boot (TM/CSOT) tidak ada di tabel publik mana pun: bootloader Android yang mendeteksinya; di jalur XNU harus datang dari firmware atau boot-arg. `GopFramebuffer`, `QcomGeniSpi`, `ShengNovatekTouch`, `ShengHidInput` hanya ABI iPadOS. Nilai DSC adalah turunan Linux, bukan dari panel.
 - **G6**: peta memori firmware uefi-pipa nyata tidak diketahui (model). Lebih dari 6 GiB butuh kolam tabel bootstrap lebih besar dari 16 halaman.
@@ -88,19 +91,21 @@ Log job dibaca lewat `gh api repos/BxiiDN/macOS-Pad-6/actions/jobs/<id>/logs` (u
 7. Pemeriksaan perangkat keras membaca konstanta **dari sumber** setiap kali dan membandingkan dengan DT mainline Linux pada commit yang dipin.
 8. Fakta yang tidak ada di mainline dicek terhadap DT Android Xiaomi (`MiCode/kernel_devicetree` `pipa-t-oss` `623dd5bf`), berkas dimuat dalam urutan include (`VENDOR_FILES`), dilaporkan sebagai "vendor".
 9. Driver ditulis sebagai inti C portabel + simulator; shim kernel tipis; tulis ke chip dikunci (`allow_writes`) sampai pemilik menguji jalur baca-saja.
-10. Perubahan UniXNU dibawa sebagai patch di `patches/unixnu/` (seri dinilai utuh: `0003` menyentuh baris `0001`; pada checkout `--in-place` terhadap `git show HEAD:`); perubahan feed sebagai `patches/<feed>/` (`FEED_PATCHES`: `adreno650`, `shengufs`). Keduanya termasuk `KERNEL_INPUTS`.
+10. Perubahan UniXNU dibawa sebagai patch di `patches/unixnu/` (seri dinilai utuh: `0003` menyentuh baris `0001`; pada checkout `--in-place` terhadap `git show HEAD:`); perubahan feed sebagai `patches/<feed>/` (`FEED_PATCHES`: `adreno650`, `shengufs`, `gopframebuffer`). Keduanya termasuk `KERNEL_INPUTS`.
 11. G6: jendela macOS 6 GiB dengan tabel 64 rentang; iPadOS 5,75 GiB satu run. 6 GiB adalah batas kolam bootstrap 4 KiB di setiap base dan slide (dihitung, bukan asumsi).
 12. G2: tidak ada root macOS dari UFS (`[storage] root = "none"` → probe-only, patch 0004); `PipaStorageGuard.h` hanya mengizinkan inspeksi register 2, 6, 7, 8 dan menolak setiap mode yang menulis `userdata`, me-mount root, atau mempublikasikan blok.
 14. Panggilan ke komponen board dari XNU dibuat strong dan di belakang saklar compile (`XNU_PIPA_SOURCE_STORAGE`), bukan weak: weak menjadi import yang ditolak XnuPrelink.
 15. Firmware touch dan urutan panel dipilih dari varian yang teridentifikasi; varian tak dikenal → tidak ada firmware.
-13. Kegagalan test fork tidak disembunyikan (langkah Adreno650 di workflow gagal terlihat, `continue-on-error`): `KNOWN_FAILURES` menyebut baris dan sebab; kegagalan yang tercatat tetapi lulus, atau gagal di tempat lain, dilaporkan FAILED.
+13. Kegagalan test fork tidak disembunyikan: `KNOWN_FAILURES` menyebut baris dan sebab; kegagalan yang tercatat tetapi lulus, atau gagal di tempat lain, dilaporkan FAILED. Sejak sesi 9 langkah Adreno650 di workflow tidak lagi `continue-on-error`: kegagalannya menggagalkan run.
+16. Simbol yang dibutuhkan driver dari board didefinisikan oleh kode yang punya perilaku sendiri (presenter, ekspor di memori), strong, tanpa definisi palsu untuk driver yang tidak ada; patch feed menjaga API lama untuk iPadOS.
+17. GPU di-link hanya oleh `pipa_macos26_gpu_defconfig`; tanpa pemanggil sampai pemilik memutuskan probe macOS (baca-saja dulu).
 
 ## Langkah berikutnya, berurutan
 
 1. (Ditunda atas instruksi pemilik) `pacstrip`, gerbang ISA, payload, boot image.
 2. Uji pertama storage di tablet **hanya oleh pemilik** dengan kernel `pipa_macos26_ufs_defconfig`: `native-source-storage=1 native-ufs-probe=2` (baca register, laporan di layar panic).
-3. Kirim `patches/unixnu/0001`–`0004`, `patches/adreno650/` dan `patches/shengufs/` ke upstream masing-masing.
-4. Backlight: link `PipaBacklight.c` (tetap baca-saja) dan ukur sisa prelink; uji pertama hanya oleh pemilik (`pipa-backlight=1`).
-5. G3: sediakan `native_gop_handoff_*` (GopFramebuffer untuk macOS atau stub board yang disetujui) dan default hidden untuk `boot_log_export_put`, lalu link percobaan Adreno650 dan ukur `__TEXT`.
+3. Kirim `patches/unixnu/0001`–`0004`, `patches/adreno650/`, `patches/shengufs/` dan `patches/gopframebuffer/` ke upstream masing-masing.
+4. G3 di macOS: pemanggil baca-saja untuk Adreno650 (setara `pipa-gpu=1`, tanpa tulis), titik attach presenter pada frame buffer firmware, lalu konfigurasi gabungan UFS + GPU (muat secara ruang). Ekspor fork: izinkan WindowServer di macOS (perubahan fork).
+5. Backlight: link `PipaBacklight.c` (tetap baca-saja) bila pemilik mau menguji `pipa-backlight=1`.
 6. Touch: kompilasi `QcomGeniSpi` + `ShengNovatekTouch` untuk arm64e dengan cara `pipa_adreno_xnu_check.py`; identitas panel dari firmware/boot-arg ke `pnl_variant_select`.
 7. Gabungkan PR #1 ke `main` hanya atas keputusan pemilik repo.

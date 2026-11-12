@@ -26,6 +26,11 @@ Board pipa format 2, kernel native pertama, dan prelink pertama dengan kernelcac
   - Adreno650: known-fail alias BO diselesaikan (`patches/adreno650/0003`, = upstream `d834731`); fork ter-compile terhadap xnu-12377 (`scripts/pipa_adreno_xnu_check.py`), 4 simbol kernel belum ada.
   - Display/touch: `PanelLink.h` (dua host DSI, DSC 1.1 rate control = Linux, varian TM/CSOT, cek reset TLMM 75 baca-saja), firmware NT36532 per varian; `pipa_hw.py` 107 fakta driver, 82 fakta vendor.
   - Audit statis tulis backlight (`tests/hw/test_backlight_audit.py`); audit alamat memori (`pipa_memory.py`).
+- Integrasi kernel sesi 9 (build di runner macOS, tanpa uji perangkat; laporan `docs/kernel-integration.md`):
+  - G3: empat simbol Adreno650 didefinisikan kode nyata di `libPipaGpu.a` (`build-pipa-gpu.py`): `NativeGOPPresenter.cpp` GopFramebuffer dengan `patches/gopframebuffer/0001` (penyelesaian swap ikut swap; tanpa referensi ke `NativeLegacyDisplay`), `package/BootLogExport.c` (kontrak ekspor sheng, blob di memori kernel, tanpa tulis UFS; host test `BootLogExportTests.c`). `pipa_macos26_gpu_defconfig` (`[kernel-gpu]`): compile, link, prelink berhasil, 0 simbol tak ter-resolve, 0 import, `__TEXT` tidak bertambah, reproducible. Katalog `Adreno650` `os_abi` + macOS 26.5.
+  - Display: `scripts/pipa_os_abi.py` memisah package menurut kernel dari resep build (macOS / iPadOS saja / model host); kode kernel macOS tidak menyebut antarmuka iPadOS.
+  - GENI/KTZ8866: `PipaBacklight.c` ter-compile terhadap xnu-12377 (`pipa_board_xnu_check.py`), tidak di-link, tetap baca-saja.
+  - `prelink_layout.py` juga mengukur batas `__DATA_CONST` dan `__TEXT_EXEC`; workflow: repro memakai defconfig yang dikonfigurasi.
 - `package/BacklightBoard.h` + `BacklightBoardTests.c`: model board KTZ8866 (fakta + urutan register), host-tested; belum ada driver.
 - CI: pemeriksaan perangkat keras vs mainline, inventaris, dan host test paket board di x86 dan arm64 (termasuk `A650GmuTests`).
 - Dokumen: `docs/board-migration.md`, `docs/kernel-build.md`; README, kompatibilitas, pengujian, roadmap, laporan Tahoe diperbarui.
