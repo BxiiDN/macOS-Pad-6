@@ -2,7 +2,7 @@
 
 Status: **analisis statis dan host test saja.** Tidak ada yang di sini diprogram ke MDSS/DSI, panel, atau pengontrol touch, dan tidak ada yang dijalankan di tablet oleh repo ini. Layar di macOS pipa tetap frame buffer firmware (GOP, 1800×2880).
 
-Sumber: `MiCode/kernel_devicetree` `pipa-t-oss` `623dd5bf` (publik), dicek otomatis oleh `scripts/pipa_hw.py vendor` (bagian display dan touch: 59 fakta; seluruhnya 81 cocok, 0 berbeda). Kode: `devices/pipa/package/PanelBoard.h`, `TouchVendor.h`, host test `PanelBoardTests.c`, `TouchVendorTests.c`.
+Sumber: `MiCode/kernel_devicetree` `pipa-t-oss` `623dd5bf` (publik), dicek otomatis oleh `scripts/pipa_hw.py vendor` (seluruhnya 82 cocok, 0 berbeda). Kode: `devices/pipa/package/PanelBoard.h`, `TouchVendor.h`, host test `PanelBoardTests.c`, `TouchVendorTests.c`.
 
 ## Reset GPIO panel
 
@@ -53,7 +53,15 @@ Semua besaran turunan diuji di `PanelBoardTests.c` dan saling mengunci: bila sat
 | Firmware | dipilih byte pembuat `mi,panel-id`: `0x42` → `novatek_nt36532_m82_fw_csot.bin`, `0x36` → `…_fw_tm.bin` (+ image MP) | `tv_config_for_panel()`; image tetap di partisi vendor tablet, tidak di repo |
 | Matriks sensor | 38 × 60 (kedua kriteria MP), pen aktif, resolusi stylus ganda | `TouchVendor.h` |
 
-**Temuan**: `build-gop-legacy-display.py` UniXNU-pipa hanya membangun firmware TM ke dalam kernel iPadOS ("panelnya yang 36"). Tablet dengan panel CSOT (`0x42`) akan menerima firmware pembuat lain. Pemilihan yang benar mengikuti ID panel (`tv_config_for_panel`), belum disambungkan.
+**Temuan**: `build-gop-legacy-display.py` UniXNU-pipa hanya membangun firmware TM ke dalam kernel iPadOS ("panelnya yang 36"). Tablet dengan panel CSOT (`0x42`) akan menerima firmware pembuat lain. Pemilihan yang benar mengikuti varian (`tv_config_for_variant`, tidak ada firmware untuk panel tak dikenal), belum disambungkan ke driver.
+
+## Struktur driver link (sesi 8, `PanelLink.h`)
+
+- **Dua host DSI**: DSI0 (kolom 0–899) dan DSI1 (900–1799), keduanya di-clock dari PLL DSI0; per host 4 lane, pixel clock 167.838.720 Hz, byte clock 125.879.040 Hz, 300/448 clock piksel aktif/total per baris, 900 byte dan 1 paket per baris. Untuk setiap laju dfps porch-mode clock link tetap; 144 Hz ditolak (`PNL_LINK_RATE`).
+- **DSC 1.1 per encoder**: konstanta, tabel rate-control pre-SCR 8 bpp / 8 bpc dan ambang buffer = `drm_dsc.h` / `drm_dsc_helper.c` Linux (12 fakta di `pipa_hw.py drivers`); turunan menurut `drm_dsc_compute_rc_parameters` seperti `dsi_populate_dsc_params` msm: `slice_chunk_size` 450, `initial_scale_value` 32, `scale_decrement_interval` 6, `final_offset` 4336, `nfl_bpg_offset` 1294, `slice_bpg_offset` 1562, `scale_increment_interval` 444, `rc_bits` 7944, `initial_dec_delay` 481. Nilai ini dihitung tangan di `PanelLinkTests.c`, terpisah dari kode. Bahwa panel pipa disetel dengan nilai yang persis sama tidak diketahui (DT hanya memberi geometri slice dan bit depth).
+- **Reset TLMM 75**: di semua berkas vendor yang dimuat, setiap node yang menyebut TLMM 75 adalah reset panel DSI (`xiaomi-sm8250-common.dtsi` melayani beberapa perangkat Xiaomi SM8250, jadi ada banyak node panel) atau pin state `sde_dsi`. Tidak ada periferal lain yang memakainya. `pnl_reset_check()` memeriksa pin state yang ditinggalkan firmware dari pembacaan register saja (gpio, output, 8 mA, tanpa pull, tinggi).
+- **Varian panel**: `pnl_variant_select(nama, ada_maker, maker)`: nama node (bentuk bootloader `node:...`) atau nama panel, dan byte pembuat bila ada; keduanya harus sepakat, selain itu `PNL_UNKNOWN`. Kedua panel berbeda di `qcom,mdss-dsi-on-command`, jadi urutan nyala panel juga bergantung pada varian.
+- **Firmware NT36532**: `tv_config_for_variant()`: TM → `novatek_nt36532_m82_fw_tm.bin`, CSOT → `…_fw_csot.bin`, `PNL_UNKNOWN` → tidak ada firmware.
 
 ## Struktur integrasi XNU (belum dibangun untuk macOS)
 

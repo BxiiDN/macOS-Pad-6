@@ -21,6 +21,11 @@ Board pipa format 2, kernel native pertama, dan prelink pertama dengan kernelcac
   - Display/touch: reset panel TLMM 75, turunan link dual DSI/DSC, catu daya (`PanelBoard.h`); fakta touch NT36532 TDDI (`TouchVendor.h`); `docs/display-touch.md`.
   - G6: sisi kernel tabel rentang terlarang, kapasitas tabel bootstrap 4 KiB (6 GiB maksimum), batas sumber (`pipa_memory.py`).
   - Fuel gauge/charger: `PowerSupplyBoard.h`, `docs/power-supply.md`. `pipa_hw.py vendor`: 81 fakta (display 45, touch 14, daya 22), 0 berbeda.
+- Kesiapan integrasi kernel (sesi 8; build di runner macOS, tanpa uji perangkat; laporan `docs/kernel-integration.md`):
+  - Storage UFS di-link ke kernel pipa lewat `pipa_macos26_ufs_defconfig` (`zzzzc-pipa-source-storage-start.patch`, rantai 122): compile, link dan prelink berhasil (kernel collection 135.102.464 byte, 0 import, sisa `__PRELINK_TEXT` 10.208 byte). `patches/unixnu/0004`: tanpa root → `NativeUfs` probe-only. `PipaStorageGuard.h`: hanya inspeksi register 2, 6, 7, 8.
+  - Adreno650: known-fail alias BO diselesaikan (`patches/adreno650/0003`, = upstream `d834731`); fork ter-compile terhadap xnu-12377 (`scripts/pipa_adreno_xnu_check.py`), 4 simbol kernel belum ada.
+  - Display/touch: `PanelLink.h` (dua host DSI, DSC 1.1 rate control = Linux, varian TM/CSOT, cek reset TLMM 75 baca-saja), firmware NT36532 per varian; `pipa_hw.py` 107 fakta driver, 82 fakta vendor.
+  - Audit statis tulis backlight (`tests/hw/test_backlight_audit.py`); audit alamat memori (`pipa_memory.py`).
 - `package/BacklightBoard.h` + `BacklightBoardTests.c`: model board KTZ8866 (fakta + urutan register), host-tested; belum ada driver.
 - CI: pemeriksaan perangkat keras vs mainline, inventaris, dan host test paket board di x86 dan arm64 (termasuk `A650GmuTests`).
 - Dokumen: `docs/board-migration.md`, `docs/kernel-build.md`; README, kompatibilitas, pengujian, roadmap, laporan Tahoe diperbarui.

@@ -6,8 +6,8 @@ Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berh
 
 `unixnu build kernel` untuk `devices/pipa` dengan profil `macos-26.5-25F71`:
 
-1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 121 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
-2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig`.
+1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 122 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
+2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig` (generik) atau `pipa_macos26_ufs_defconfig` (dengan storage UFS, `[kernel-ufs]`).
 3. Arsip yang di-link ke kernel: corecrypto sumber (dua kali, kedua dengan namespace), ArmDTPlatform, ArmCpu cabang pipa, libpthread kernel.
 4. Hasil: kernel native `mach.development.bcm2837` (Mach-O `MH_EXECUTE`, arm64e), lalu (tanpa `--skip-prelink`) prelink dengan kext dari kernelcache J274AP 26.5 asli.
 
@@ -18,7 +18,7 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Syarat | Status | Bukti |
 | --- | --- | --- |
 | Board format 2 di-resolve UniXNU untuk 26.5 dan override iPadOS | siap | `scripts/pipa-unixnu.sh check` |
-| 121/121 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
+| 122/122 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
 | Patch ARMv8.2 (null-PAC, FGE) sesuai sumber `kernel/` | siap | `gen_tahoe_patches.py --check` |
 | Device tree → ADT dengan nilai board | siap | `check --adt` |
 | ArmCpu cabang pipa dari pin `feeds.toml` | siap (resolusi) | G1 di board-migration.md |
@@ -31,6 +31,8 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Tanpa import chained fixup | **ya** (0 import) | percobaan 9 |
 | Prelink dengan kernelcache 26.5 | **berhasil** di percobaan 9 (percobaan 3–8 gagal: tata letak, lalu import) | lihat riwayat |
 | Build bit-for-bit reproducible | **ya**: kernel native dan kernel collection identik antar-build dan antar-commit dengan input kernel yang sama | percobaan 8, 9, 12 |
+| Kernel dengan storage UFS (probe-only) ter-link dan ter-prelink | **ya**: 0 import, sisa `__PRELINK_TEXT` 10.208 byte | percobaan 15 |
+| Adreno650 terhadap xnu-12377 | ter-compile; 4 simbol kernel tidak ada (tidak di-link) | percobaan 15 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Boot di tablet | belum | |
 
@@ -274,3 +276,24 @@ Jalan ke sana (setiap kegagalan nyata, diperbaiki di kode, bukan disembunyikan):
 | 43106623934 | `8234313` | arsip jadi; `native_ufs_source_create` tidak terdefinisi; string compatible tidak ada di objek | `patches/shengufs/0002` (factory pin katalog); saklar SoC dicek dari command line (`3b3e1be`) |
 
 Yang dibuktikan: lima sumber package pipa dan PipaUfs (dengan dua patch) ter-compile terhadap header xnu-12377.121.6 yang di-prepare kernel step, sebagai arm64e. Yang tidak: link ke kernel, perilakunya, apa pun di tablet.
+
+### Percobaan 14 — 2026-11-12, commit `27be73a`, run [43136731212](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43136731212): **storage ter-link**, prelink kurang 6.176 byte
+
+`[kernel-ufs] [kernel-prelink]`: `pipa_macos26_ufs_defconfig` (= generik + `-DXNU_PIPA_SOURCE_STORAGE=1` + `force_load` `libShengSourceStorage.a`), rantai 122 patch (`zzzzc-pipa-source-storage-start.patch`), arsip dibangun oleh kernel step (`component:ShengUfs`, `component:RamBlock`).
+
+- Kernel native ter-link: 25.251.496 byte, SHA-256 `9404d723…`, **0 import chained fixup**; 12 anggota arsip ada di link map; 413 simbol yang dibutuhkan arsip ter-resolve.
+- Prelink gagal: `No room for 0x194000 bytes in __PRELINK_TEXT` (celah terbesar `0x192f40`, margin −6.176 byte).
+
+### Percobaan 15 — 2026-11-12, commit `258f2a4`, run [43138111458](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43138111458): **kernel dengan storage UFS ter-prelink**
+
+Perubahan: `patches/unixnu/0004` (tanpa root → `NativeUfs` probe-only: tanpa `NativeUfsBlock`, `startRoot`, uji blok userdata), `patches/shengufs/0002` memindah `native_ufs_source_create` keluar dari bagian itu.
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.200.784 byte, SHA-256 `6955fd3c1bd12a918ccfe9c9e1294f0be5e8b12c8bd908769119db8bdd25b56a`, 0 import |
+| `__TEXT` native | `0x190000`; celah `0x192f40`, terpakai setelah perataan `0x1927e0`: **sisa 10.208 byte** |
+| Kernel collection | `MH_FILESET` arm64e 135.102.464 byte, SHA-256 `9465acd46fd3ff0d1e660a1ac7497c0d504b28828b569f784ab69e9b7b076cc2`, 0 import; XnuPrelink `missing` {}, `stubbed` {}, `mapping_complete` true, 87 kext |
+| Arsip storage | 1.359.384 byte; `-DNATIVE_UFS_SOURCE_API=1 -DNATIVE_UFS_SM8250=1 -DNATIVE_UFS_PROBE_ONLY=1`; 13 simbol pipa; 385 simbol dari kernel, semua ter-resolve; 12 anggota ter-link; 0 duplicate symbol |
+| Adreno650 (tidak di-link) | 29 objek ter-compile dengan record compile kernel ini, arsip 1.228.856 byte; 388 simbol kernel dibutuhkan, **4 tidak ada**: `native_gop_handoff_call`, `native_gop_handoff_memory`, `boot_log_export_put` (+ stub ptrauth-nya). Langkah ditandai gagal, job lanjut (`continue-on-error`) |
+
+Laporan kesiapan lengkap: [kernel-integration.md](kernel-integration.md). Belum di-boot; `pacstrip` dan payload ditunda.
