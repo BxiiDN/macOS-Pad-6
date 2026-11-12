@@ -11,6 +11,7 @@ Diperbarui: 2026-11-12 (sesi 8). Baseline sesi: `92bd286`. Semua angka di bawah 
 | Pemilih di workflow | `[kernel-build]`, `[kernel-prelink]` | `[kernel-ufs]` (+ `[kernel-prelink]`) |
 | Arsip storage | dibangun tiap kernel step (`component:ShengUfs`), **tidak di-link** | dibangun dan di-`force_load` |
 | `native_source_storage_start()` | tidak di-compile (`XNU_PIPA_SOURCE_STORAGE` tidak ada) | dipanggil setelah `vfsinit` |
+| Hasil terakhir | [run 43139267130](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43139267130): 0 anggota arsip ter-link, `__TEXT` `0x188000`, sisa 42.976 byte, prelink berhasil | [run 43138111458](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43138111458): 12 anggota ter-link, `__TEXT` `0x190000`, sisa 10.208 byte, prelink berhasil |
 | Perangkat lain | — | file hanya di `devices/pipa`; profil board lain tidak berubah |
 
 Rantai patch: 122/122 apply ke xnu-12377.121.6 (patch baru `zzzzc-pipa-source-storage-start.patch`). Karena patch itu menggeser nomor baris `bsd_init.c`, kernel generik pun punya hash baru, walau kodenya tidak berubah.

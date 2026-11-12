@@ -297,3 +297,7 @@ Perubahan: `patches/unixnu/0004` (tanpa root → `NativeUfs` probe-only: tanpa `
 | Adreno650 (tidak di-link) | 29 objek ter-compile dengan record compile kernel ini, arsip 1.228.856 byte; 388 simbol kernel dibutuhkan, **4 tidak ada**: `native_gop_handoff_call`, `native_gop_handoff_memory`, `boot_log_export_put` (+ stub ptrauth-nya). Langkah ditandai gagal, job lanjut (`continue-on-error`) |
 
 Laporan kesiapan lengkap: [kernel-integration.md](kernel-integration.md). Belum di-boot; `pacstrip` dan payload ditunda.
+
+### Percobaan 16 — 2026-11-12, commit `4e226a7`, run [43139267130](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43139267130): kernel generik setelah integrasi
+
+`[kernel-prelink]` dengan `pipa_macos26_defconfig`: arsip storage tetap dibangun oleh kernel step, tetapi **0 anggotanya di link map** (`--linked no` lulus). Kernel native 0 import, SHA-256 `a222f59bce65605403d9cc8441476325bc4b47c81d182d87c30aa053603820aa`, `__TEXT` `0x188000`, sisa `__PRELINK_TEXT` 42.976 byte, sama seperti sebelum integrasi. Hash berbeda dari `ce13aea1…` karena tanggal build (input kernel berubah) dan nomor baris `bsd_init.c` (patch `zzzzc`). Kernel collection 135.036.928 byte, SHA-256 `eb19a2547852e5f71608fc51cd4b26ed7d834697e9106f4b2ca0fac13357dc6c`, `missing`/`stubbed` {}, `mapping_complete` true. Adreno650: hasilnya sama dengan percobaan 15 (29 objek, 4 simbol kernel tidak ada).
