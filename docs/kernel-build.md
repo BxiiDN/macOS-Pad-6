@@ -7,7 +7,7 @@ Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berh
 `unixnu build kernel` untuk `devices/pipa` dengan profil `macos-26.5-25F71`:
 
 1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 122 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
-2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig` (generik) atau `pipa_macos26_ufs_defconfig` (dengan storage UFS, `[kernel-ufs]`).
+2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig` (generik), `pipa_macos26_ufs_defconfig` (dengan storage UFS, `[kernel-ufs]`) atau `pipa_macos26_gpu_defconfig` (dengan Adreno650, `[kernel-gpu]`).
 3. Arsip yang di-link ke kernel: corecrypto sumber (dua kali, kedua dengan namespace), ArmDTPlatform, ArmCpu cabang pipa, libpthread kernel.
 4. Hasil: kernel native `mach.development.bcm2837` (Mach-O `MH_EXECUTE`, arm64e), lalu (tanpa `--skip-prelink`) prelink dengan kext dari kernelcache J274AP 26.5 asli.
 
@@ -32,7 +32,7 @@ Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. 
 | Prelink dengan kernelcache 26.5 | **berhasil** di percobaan 9 (percobaan 3–8 gagal: tata letak, lalu import) | lihat riwayat |
 | Build bit-for-bit reproducible | **ya**: kernel native dan kernel collection identik antar-build dan antar-commit dengan input kernel yang sama | percobaan 8, 9, 12 |
 | Kernel dengan storage UFS (probe-only) ter-link dan ter-prelink | **ya**: 0 import, sisa `__PRELINK_TEXT` 10.208 byte | percobaan 15 |
-| Adreno650 terhadap xnu-12377 | ter-compile; 4 simbol kernel tidak ada (tidak di-link) | percobaan 15 |
+| Kernel dengan Adreno650 (`pipa_macos26_gpu_defconfig`) ter-link dan ter-prelink | **ya**: 0 simbol tak ter-resolve, 0 import, `__TEXT` tetap `0x188000`, reproducible; tidak ada pemanggil driver GPU | percobaan 17–18 |
 | `pacstrip` + gerbang ISA pada kernel collection | belum | |
 | Boot di tablet | belum | |
 
@@ -301,3 +301,26 @@ Laporan kesiapan lengkap: [kernel-integration.md](kernel-integration.md). Belum 
 ### Percobaan 16 — 2026-11-12, commit `4e226a7`, run [43139267130](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43139267130): kernel generik setelah integrasi
 
 `[kernel-prelink]` dengan `pipa_macos26_defconfig`: arsip storage tetap dibangun oleh kernel step, tetapi **0 anggotanya di link map** (`--linked no` lulus). Kernel native 0 import, SHA-256 `a222f59bce65605403d9cc8441476325bc4b47c81d182d87c30aa053603820aa`, `__TEXT` `0x188000`, sisa `__PRELINK_TEXT` 42.976 byte, sama seperti sebelum integrasi. Hash berbeda dari `ce13aea1…` karena tanggal build (input kernel berubah) dan nomor baris `bsd_init.c` (patch `zzzzc`). Kernel collection 135.036.928 byte, SHA-256 `eb19a2547852e5f71608fc51cd4b26ed7d834697e9106f4b2ca0fac13357dc6c`, `missing`/`stubbed` {}, `mapping_complete` true. Adreno650: hasilnya sama dengan percobaan 15 (29 objek, 4 simbol kernel tidak ada).
+
+### Percobaan 17 — 2026-11-12, commit `edd874d`, run [43143696276](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43143696276): **kernel dengan Adreno650 ter-link dan ter-prelink**; satu cek salah
+
+`[kernel-gpu] [kernel-prelink]`: `pipa_macos26_gpu_defconfig` (= generik + `force_load` `libAdreno650.a` dan `libPipaGpu.a`). Board memilih `Adreno650` (beserta kit AdrenoPM4, AdrenoFirmware, ArmSmmu4K) dan `GopFramebuffer`; `component:Adreno650` dan `build-pipa-gpu.py` di `[kernel] archives`.
+
+- Compile + link berhasil: 31 anggota arsip di link map, **0 import**, kernel native 25.263.616 byte, SHA-256 `121cf27c…`; `__TEXT` tetap `0x188000`.
+- Prelink berhasil: kernel collection 135.118.848 byte, SHA-256 `8de717f7…`, `missing`/`stubbed` {}, 87 kext.
+- Langkah "Adreno650 and libPipaGpu.a" gagal pada satu nama: `l_boot_log_export_put.ptrauth`, pointer bertanda tangan yang dibuat Apple clang untuk fungsi weak-import (nm mencantumkannya sebagai undefined). Link sudah membuktikan ter-resolve; cek diperbaiki agar memeriksa targetnya (`_boot_log_export_put`), tidak dilewati.
+- Pass pertama `kernel-bootstrap` (record compile) berhenti pada `_corecrypto_kext_start` seperti biasa; itu pass sebelum arsip ada, bukan link akhir.
+
+### Percobaan 18 — 2026-11-12, commit `e5f9929`, run [43145180980](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145180980): kernel GPU, semua langkah lulus, **reproducible**
+
+`[kernel-gpu] [kernel-prelink] [kernel-repro]`, input kernel sama dengan percobaan 17.
+
+| | Hasil |
+| --- | --- |
+| Simbol | 398 dibutuhkan kedua arsip, **0** tidak terdefinisi; `native_gop_handoff_call`, `native_gop_handoff_memory`, `boot_log_export_put` didefinisikan `libPipaGpu.a` dan ada di kernel; `l_boot_log_export_put.ptrauth` → target terdefinisi |
+| Arsip | `libAdreno650.a` 1.229.456 byte (29 anggota; `__TEXT,__text` 117.828, `__TEXT` non-kode ±1,5 KB), `libPipaGpu.a` 324.056 byte (2 anggota) |
+| Kernel native | sama dengan percobaan 17 (`121cf27cf58759cf4a9517a67dc2119ac1cc2d4f2316fea29ee02d9c2ee1e67d`) |
+| Kernel collection | sama dengan percobaan 17 (`8de717f72bc5e96dcea104510571c377d21e774135346515dd1980d2aba920ea`) |
+| Batas prelink | `__PRELINK_TEXT` sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.341.184 (`prelink_layout.py`, baru) |
+| Build kedua | SHA-256, UUID, string versi sama |
+| `PipaBacklight.c` | ter-compile dengan record compile `bsd_init.c` (`-Werror`); 7 simbol yang dibutuhkan ada di kernel; tidak di-link |
