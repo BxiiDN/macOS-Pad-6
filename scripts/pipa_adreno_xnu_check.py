@@ -146,7 +146,13 @@ def main():
             }
         needed = sorted(undefined - defined)
         provided = symbols(kernel, undefined=False)
-        absent = [s for s in needed if s not in provided]
+        # Apple clang's arm64e code takes the address of a weak-imported function through a signed pointer it emits
+        # as l_<name>.ptrauth (the member's __DATA,__auth_ptr); nm lists that private label as undefined. It is the
+        # pointer to _<name>, so it resolves exactly when _<name> does: that symbol is what is checked.
+        stubs = {s: "_" + s[2:-len(".ptrauth")] for s in needed if s.startswith("l_") and s.endswith(".ptrauth")}
+        result["ptrauth_pointers"] = {s: {"target": t, "target_defined": t in defined or t in provided}
+                                      for s, t in stubs.items()}
+        absent = [s for s in needed if s not in provided and not (s in stubs and (stubs[s] in defined or stubs[s] in provided))]
         result["kernel_symbols_needed"] = len(needed)
         result["absent_from_kernel"] = absent
         result["handoff_defined_by_PipaGpu"] = {s: s in symbols(paths["PipaGpu"], undefined=False) for s in HANDOFF}

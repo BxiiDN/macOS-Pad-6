@@ -76,6 +76,27 @@ Semua besaran turunan diuji di `PanelBoardTests.c` dan saling mengunci: bila sat
 
 Urutan yang aman bila dilanjutkan: (1) kompilasi `QcomGeniSpi` + `ShengNovatekTouch` terhadap header xnu-12377 di runner macOS; (2) sambungkan `tv_config_for_panel` ke pemuatan firmware; (3) HID untuk macOS; (4) panel penuh hanya setelah ada driver clock/GDSC MDSS. Setiap uji di tablet hanya oleh pemilik.
 
+## Pemisahan kode analisis iPadOS dan kode yang kompatibel macOS (sesi 9)
+
+`scripts/pipa_os_abi.py` membaca resep build (bukan daftar tangan): `board.toml` `[kernel] archives` untuk macOS 26.5 (termasuk resep komponen: storage UniXNU arm64e, `build-adreno650.py`, `build-pipa-gpu.py`) dan arsip override iPadOS 17 (plus `build-boot-progress.py` dari `CONFIG_XNU_BOOT_PROGRESS`). Sumber masuk ke sebuah kernel bila builder-nya menyebut file itu di kode (bukan docstring/komentar); header bila di-include sumber kernel itu. `--check` gagal bila kode kernel macOS menyebut antarmuka khusus iPadOS (`IOMobileFramebuffer`, `NativeLegacyDisplay`, `IOMobileGraphicsFamily`, `backboardd`, `SpringBoard`, `offline-legacy`, `native_legacy_`). Diuji di `tests/hw/test_os_abi_split.py`.
+
+| Kelompok | Isi (package pipa) | Status |
+| --- | --- | --- |
+| Kernel macOS 26.5 | `SourceStorage.cpp`, `SourceRootPolicies.cpp`, `SourceRootBinding.cpp`, `BootLog.c`, `BootReset.c` (storage), `A650Gmu.c` (Adreno650), `BootLogExport.c` (libPipaGpu) + header-nya | tidak menyebut antarmuka iPadOS; ter-compile di runner macOS |
+| Kernel iPadOS 17 saja (analisis/bring-up) | `LegacyDisplayProbe.cpp`, `MdssProbe.cpp`, `FlipProbe.cpp`, `TouchProbe.cpp`, `TouchState.cpp`, `HidInputProbe.cpp`, `GpuProbe.cpp`, `KeyStoreProbe.cpp`, `NativeBattery.cpp`, `Buttons.c`, `Gestures.c`, `BootRamoops.c`, `Boot*Probe.c`, `LinkStubs.c`, `ShengPlatformPower.cpp` | mengikat kelas atau alur boot iPadOS (`IOMobileFramebufferLegacy`, `backboardd`, flag `offline-legacy-*`); tidak dipakai kernel macOS |
+| Model host (OS-netral, belum di kernel mana pun) | `PanelLink.h`, `PanelBoard.h`, `TouchVendor.h`, `TouchBoard.h`* , `BacklightBoard.h`, `GeniI2cCore.h`, `GeniI2cBoard.h`, `Ktz8866Driver.h`, `PipaBacklight.c`, `PowerSupplyBoard.h` | C murni tanpa ABI OS; diuji di host. Dual DSI, DSC 1.1, TLMM 75, varian TM/CSOT dan pemilihan firmware NT36532 ada di sini |
+
+\* `TouchBoard.h` di-include `TouchProbe.cpp`, jadi tercatat "iPadOS saja" oleh skrip; isinya fakta board tanpa ABI OS.
+
+Driver feed (bukan package):
+
+| Driver | Untuk macOS 26.5 | Alasan |
+| --- | --- | --- |
+| `GopFramebuffer` `NativeGOPPresenter.cpp` | **kompatibel**, di-compile untuk `libPipaGpu.a` (patch `gopframebuffer/0001`) | IOKit biasa: `PE_current_console`, `mapDeviceMemoryWithIndex`, `IOUserClient`. Belum ada yang membuat instance-nya di kernel macOS pipa |
+| `GopFramebuffer` `NativeLegacyDisplay.cpp`, `NativeMobileDisplay.cpp` | tidak | mengikat kelas asli `IOMobileFramebufferLegacy`/`IOMobileFramebuffer` lewat fixture ABI per fileset (iPadOS 17/27, macOS 27.3); fixture 26.5 belum ada |
+| `QcomGeniSpi`, `ShengNovatekTouch`, `ShengHidInput` | tidak dibangun | katalog: ABI iPadOS; HID untuk macOS (IOHIDDevice) belum ada |
+| Adreno650 `NativeAdrenoPublish.cpp` metode ekspor | ter-link, tidak terjangkau | pemanggil hanya menerima proses `backboardd` (server render iPadOS); di macOS servernya WindowServer |
+
 ## Yang tidak dibuktikan
 
 - Bahwa TLMM 75 benar-benar me-reset panel atau touch pipa: dibaca dari DT vendor, tidak diukur.

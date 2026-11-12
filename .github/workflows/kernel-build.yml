@@ -199,6 +199,12 @@ jobs:
         env:
           LINKED: ${{ contains(github.event.head_commit.message, '[kernel-gpu]') && 'yes' || 'no' }}
 
+      # GENI I2C / KTZ8866: package/PipaBacklight.c with this kernel's compile record (-Werror) and its symbols looked up
+      # in this kernel. Compile only: not archived, not linked, nothing calls it; the KTZ8866 stays read only.
+      - name: Board models against xnu-12377 (compile only)
+        if: always() && steps.kernel.outcome == 'success'
+        run: python3 scripts/pipa_board_xnu_check.py --unixnu "$UNIXNU" --json "$WORK/board-xnu.json"
+
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
         if: >-
@@ -249,7 +255,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/public"
           cp "$WORK"/pipa-board.json "$WORK"/kernel-report.json "$WORK"/prelink-report.json "$WORK"/prelink-layout.json \
             "$WORK"/size-audit.json "$WORK"/size-audit.md "$WORK"/kernel-report-2.json "$WORK"/repro.json \
-            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json "$WORK"/adreno-xnu.json \
+            "$WORK"/prelink-record.json "$WORK"/prelink-record-summary.json "$WORK"/storage-build.json "$WORK"/adreno-xnu.json "$WORK"/board-xnu.json \
             "$RUNNER_TEMP/public/" 2>/dev/null || true
           python3 - <<'EOF'
           import os
