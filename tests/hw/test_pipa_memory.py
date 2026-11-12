@@ -120,6 +120,30 @@ class KernelSide(unittest.TestCase):
         self.assertTrue(limits["first_range_check"])
 
 
+class AddressAudit(unittest.TestCase):
+    def test_board_window(self):
+        self.assertEqual(pm.dts_memory(), (0x80000000, 0x980000000))
+        checks = pm.address_audit(0xc0000000, 6 * GIB, [])
+        self.assertTrue(all(ok for _, ok, _ in checks), [c for c in checks if not c[1]])
+        self.assertGreaterEqual(pm.IMAGE_ESTIMATE, pm.KC_BYTES)
+
+    def test_failures_are_named(self):
+        bad = {name for name, ok, _ in pm.address_audit(0x80000000, 9 * GIB, [])}
+        failed = {name for name, ok, _ in pm.address_audit(0x80000000, 9 * GIB, []) if not ok}
+        self.assertIn("window inside one DRAM bank", failed)                     # spans the bank 0 / bank 1 gap
+        self.assertLessEqual(failed, bad)
+        head = pm.IMAGE_ESTIMATE + pm.kernel_reserve(6 * GIB)
+        inside_head = [(0xc0000000 + head - 0x1000, 0x1000)]
+        failed = {name for name, ok, _ in pm.address_audit(0xc0000000, 6 * GIB, inside_head) if not ok}
+        self.assertEqual(failed, {"excluded ranges page aligned, sorted, inside the window, past the head"})
+        unaligned = [(0xc0000000 + 1 * GIB + 0x800, 0x1000)]
+        failed = {name for name, ok, _ in pm.address_audit(0xc0000000, 6 * GIB, unaligned) if not ok}
+        self.assertEqual(failed, {"excluded ranges page aligned, sorted, inside the window, past the head"})
+        many = [(0xc0000000 + 1 * GIB + i * 0x2000, 0x1000) for i in range(257)]
+        failed = {name for name, ok, _ in pm.address_audit(0xc0000000, 6 * GIB, many) if not ok}
+        self.assertEqual(failed, {"kernel table fits one page"})
+
+
 @unittest.skipUnless(HAVE, "needs a C compiler and third_party/UniXNU (git submodule update --init third_party/UniXNU)")
 class LoaderCode(unittest.TestCase):
     @classmethod
@@ -187,6 +211,14 @@ class LoaderCode(unittest.TestCase):
                     self.assertLessEqual(len(row["exclusions"]), 1)
                 if capacity == 4096:
                     self.assertFalse(row["merged"])
+
+    def test_loader_tables_pass_the_address_audit(self):
+        rng = random.Random(4)
+        for _ in range(20):
+            d = pm.perturbed(pm.model_map(), rng.randint(1, 30), rng)
+            row = pm.evaluate(self.win, d, 6 * GIB, 64)
+            checks = pm.address_audit(row["base"], 6 * GIB, row["exclusions"])
+            self.assertTrue(all(ok for _, ok, _ in checks), [c for c in checks if not c[1]])
 
     def test_loader_and_kernel_reserve_agree(self):
         for size in range(256 * MIB, 8 * GIB + 1, 128 * MIB):

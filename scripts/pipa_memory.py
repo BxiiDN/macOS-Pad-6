@@ -362,6 +362,49 @@ def kernel_view(row, size, page=KERNEL_PAGE):
             "table_bytes": 16 * len(k["table"]), "memsize_agrees": k["bytes"] == row.get("excluded", 0)}
 
 
+# Address consistency: board, DTS, loader head, kernel image --------------------------------------------------------
+
+KC_BYTES = 135036928             # the prelinked macOS 26.5 kernel collection (docs/kernel-build.md, attempts 9-12)
+DTS = ROOT / "devices/pipa/dts/pipa.dts"
+
+
+def dts_memory(path=DTS):
+    """The (base, size) of the DTS memory node: reg = <hi lo hi lo>."""
+    import re
+    m = re.search(r"memory@[0-9a-f]+\s*\{[^}]*?reg\s*=\s*<([^>]*)>", Path(path).read_text(), re.S)
+    if not m:
+        raise ValueError(f"{path}: no memory node")
+    c = [int(x, 0) for x in m.group(1).split()]
+    return (c[0] << 32 | c[1], c[2] << 32 | c[3])
+
+
+def address_audit(base, size, exclusions, board=BOARD, page=KERNEL_PAGE):
+    """Whether the window, the head the loader keeps free, the image and the excluded ranges agree with each other and
+    with the board: a list of (check, ok, detail)."""
+    raw = tomllib.loads(Path(board).read_text())
+    dram_size = int(raw["payload"]["dram_size"], 0)
+    dts_base, dts_size = dts_memory()
+    span_end = base + size
+    head = IMAGE_ESTIMATE + kernel_reserve(size)
+    out = [
+        ("DTS memory = board dram range", (dts_base, dts_size) == (0x80000000, dram_size),
+         f"DTS {dts_base:#x}+{dts_size:#x}, board 0x80000000+{dram_size:#x}"),
+        ("window inside the dram range", dts_base <= base and span_end <= dts_base + dts_size,
+         f"{base:#x}..{span_end:#x}"),
+        ("window inside one DRAM bank", not bank_gaps(base, size), f"gaps {bank_gaps(base, size)}"),
+        ("window 2 MiB aligned (block mappings, kernel offset 0)", base % BLOCK == 0 and size % BLOCK == 0, f"{base:#x}"),
+        ("image estimate holds the kernel collection", IMAGE_ESTIMATE >= KC_BYTES,
+         f"{IMAGE_ESTIMATE:#x} >= {KC_BYTES:#x}"),
+        ("head (image + reserve) inside the window", head < size, f"head {head:#x}"),
+        ("excluded ranges page aligned, sorted, inside the window, past the head",
+         all(b % page == 0 and s % page == 0 and base + head <= b and b + s <= span_end for b, s in exclusions) and
+         [b for b, _ in exclusions] == sorted(b for b, _ in exclusions),
+         f"{len(exclusions)} ranges"),
+        ("kernel table fits one page", 16 * len(exclusions) <= page, f"{16 * len(exclusions)} bytes"),
+    ]
+    return out
+
+
 # Scenarios ----------------------------------------------------------------------------------------------------------
 
 def board_windows(board=BOARD):
@@ -546,6 +589,13 @@ def main():
     if bootstrap_any != BOOTSTRAP_MAX:
         problems.append(f"the 4 KiB bootstrap pool maps {fmt_size(bootstrap_any)} at every base and slide, "
                         f"not the {fmt_size(BOOTSTRAP_MAX)} board.toml states")
+
+    mac_row = next(r for r in rows if r["configured"] == board_windows()[0]["profile"])
+    if mac_row["base"]:
+        for name, ok, detail in address_audit(mac_row["base"], mac_row["size"], mac_row["exclusions"]):
+            print(f"  address audit: {'ok  ' if ok else 'FAIL'} {name} ({detail})")
+            if not ok:
+                problems.append(f"address audit: {name} ({detail})")
 
     mac = board_windows()[0]
     robust = None
