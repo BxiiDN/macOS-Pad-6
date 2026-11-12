@@ -50,7 +50,7 @@ class Series(unittest.TestCase):
 
     def test_feed_series(self):
         # patches/<feed> for each feeds.toml source pipa_unixnu.py patches after fetching it.
-        self.assertEqual(set(pu.FEED_PATCHES), {"Adreno650", "ShengUfs"})
+        self.assertEqual(set(pu.FEED_PATCHES), {"Adreno650", "ShengUfs", "GopFramebuffer"})
         for name, directory in pu.FEED_PATCHES.items():
             patches = pu.unixnu_patches(directory)
             self.assertTrue(patches, name)
@@ -66,6 +66,14 @@ class Series(unittest.TestCase):
         factory = pu.unixnu_patches(pu.FEED_PATCHES["ShengUfs"])[1].read_text()
         self.assertIn('+extern "C" IOService *native_ufs_source_create (void)', factory)
         self.assertIn("+#if defined(NATIVE_UFS_SOURCE_API) && NATIVE_UFS_SOURCE_API", factory)
+        # GopFramebuffer: the completion goes with the offered swap; the legacy entry point (and its reference to
+        # NativeLegacyDisplay's native_legacy_gpu_complete) is left out only under NATIVE_GOP_OFFER_WITH_ONLY.
+        gop = pu.unixnu_patches(pu.FEED_PATCHES["GopFramebuffer"])[0].read_text()
+        self.assertIn("+    done.complete(done.display,status);return kIOReturnSuccess;", gop)
+        self.assertIn("-    native_legacy_gpu_complete(done.display,status);return kIOReturnSuccess;", gop)
+        self.assertIn("+    if(!gpuMode || !memory || !display || !complete || !gate)return false;", gop)
+        self.assertEqual(gop.count("+#if !(defined(NATIVE_GOP_OFFER_WITH_ONLY) && NATIVE_GOP_OFFER_WITH_ONLY)"), 2)
+        self.assertIn("+    return native_gop_gpu_offer_with(presenter,display,memory,stride,width,height,native_legacy_gpu_complete);", gop)
 
 
 @unittest.skipUnless(HAVE_UNIXNU, "needs the UniXNU submodule")

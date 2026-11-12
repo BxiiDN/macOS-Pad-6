@@ -36,12 +36,18 @@ lba_bytes = 4096
 root = "none"
 
 # The macOS 26.5 kernel: the generic CPU, interrupt, timer and platform expert path of the arm64e profile on this board's
-# cores. Display, input and GPU are not selected: no arm64e build of them exists for SM8250 (Adreno650 is catalogued for
-# iPadOS 17 only). Storage (G2) is built in every kernel step and linked only by pipa_macos26_ufs_defconfig:
-# component:ShengUfs runs, under arm64e, the source storage recipe (PipaUfs 5c64c01 + patches/shengufs, the package's
-# five storage sources; patches/unixnu 0001 for SM8250, 0003 for no root) and writes libShengSourceStorage.a;
-# component:RamBlock puts UniXNU's NativeRamBlock.cpp, which that recipe compiles, into the tree. With
-# pipa_macos26_defconfig neither archive is linked and the kernel is the generic one. docs/kernel-build.md.
+# cores. Display and input are not selected: no macOS build of them exists for SM8250. Storage (G2) and the GPU (G3) are
+# built in every kernel step and each is linked only by its own defconfig:
+#  - component:ShengUfs runs, under arm64e, the source storage recipe (PipaUfs 5c64c01 + patches/shengufs, the
+#    package's five storage sources; patches/unixnu 0001 for SM8250, 0003 for no root, 0004 probe-only) and writes
+#    libShengSourceStorage.a; component:RamBlock puts UniXNU's NativeRamBlock.cpp, which that recipe compiles, into the
+#    tree. Linked by pipa_macos26_ufs_defconfig.
+#  - component:Adreno650 runs build-adreno650.py (the fork with patches/adreno650 and its kits AdrenoPM4,
+#    AdrenoFirmware, ArmSmmu4K, which come with it), and build-pipa-gpu.py builds the presenter of GopFramebuffer
+#    (patches/gopframebuffer) and package/BootLogExport.c into libPipaGpu.a: the kernel symbols the fork needs.
+#    GopFramebuffer is selected for that one source; its display drivers are not built. Linked by
+#    pipa_macos26_gpu_defconfig.
+# With pipa_macos26_defconfig none of these archives is linked and the kernel is the generic one. docs/kernel-build.md.
 [kernel]
 defconfig = "pipa_macos26_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config", "os:configs/macos.config"]
@@ -60,6 +66,9 @@ archives = [
   # G2, as UniXNU-sheng's macOS profile orders them; its dependencies VirtioMmioBlock and VerifiedRoot come with it.
   "component:ShengUfs",
   "component:RamBlock",
+  # G3: Adreno650 and the kernel symbols it needs (pipa_macos26_gpu_defconfig).
+  "component:Adreno650",
+  "build-pipa-gpu.py",
 ]
 
 # The firmware is the Mu-Silicium pipa port (pipaPkg, Kona SM8250) of the uefi-pipa checkout, with UniXNU, the ramdisk
@@ -143,7 +152,7 @@ source = "device:dts/pipa.dts"
 include_dirs = ["soc:dts"]
 
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot", "ShengUfs", "RamBlock"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot", "ShengUfs", "RamBlock", "Adreno650", "GopFramebuffer"]
 
 [adt]
 
@@ -162,8 +171,9 @@ unixnu = "../../third_party/UniXNU"
 
 [package.defconfig]
 "macos-26.5-25F71" = "pipa_macos26_defconfig"
-# pipa_macos26_ufs_defconfig (the same kernel with the source storage linked) is chosen by name: "defconfig
-# pipa_macos26_ufs_defconfig", as kernel-build.yml does for "[kernel-ufs]".
+# pipa_macos26_ufs_defconfig (the same kernel with the source storage linked) and pipa_macos26_gpu_defconfig (with
+# Adreno650 linked) are chosen by name: "defconfig pipa_macos26_ufs_defconfig", as kernel-build.yml does for
+# "[kernel-ufs]" and "[kernel-gpu]".
 "ipados-17.7.11-21H461" = "pipa_defconfig"
 
 # ---------------------------------------------------------------------------------------------------------------------

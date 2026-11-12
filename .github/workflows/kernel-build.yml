@@ -10,7 +10,9 @@
 # on the default branch, which main does not have yet). Every build also runs scripts/kernel_size_audit.py on the
 # link map (-Wl,-map in pipa_macos26_defconfig). The kernel step builds the board's arm64e source storage archive
 # (component:ShengUfs) and scripts/pipa_storage_build.py checks it; "[kernel-ufs]" configures pipa_macos26_ufs_defconfig,
-# which links it into the kernel ("[storage-build]" only starts a build).
+# which links it into the kernel ("[storage-build]" only starts a build). The kernel step also builds Adreno650 and
+# libPipaGpu.a (component:Adreno650, build-pipa-gpu.py), checked by scripts/pipa_adreno_xnu_check.py; "[kernel-gpu]"
+# configures pipa_macos26_gpu_defconfig, which links those two.
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 name: Kernel build (pipa, macOS 26.5)
 
@@ -50,7 +52,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[kernel-build]') ||
       contains(github.event.head_commit.message, '[kernel-prelink]') || contains(github.event.head_commit.message, '[kernel-repro]') ||
-      contains(github.event.head_commit.message, '[storage-build]') || contains(github.event.head_commit.message, '[kernel-ufs]')
+      contains(github.event.head_commit.message, '[storage-build]') || contains(github.event.head_commit.message, '[kernel-ufs]') ||
+      contains(github.event.head_commit.message, '[kernel-gpu]')
     runs-on: macos-26
     timeout-minutes: 360
     steps:
@@ -119,13 +122,18 @@ jobs:
 
       - name: Configure
         # "[kernel-ufs]": pipa_macos26_ufs_defconfig, the same kernel with pipa's source storage linked (G2).
+        # "[kernel-gpu]": pipa_macos26_gpu_defconfig, the same kernel with Adreno650 and libPipaGpu.a linked (G3).
         run: |
           defconfig=pipa_macos26_defconfig
+          if [ "$UFS" = 1 ] && [ "$GPU" = 1 ]; then echo "::error::[kernel-ufs] and [kernel-gpu] name two configurations"; exit 1; fi
           if [ "$UFS" = 1 ]; then defconfig=pipa_macos26_ufs_defconfig; fi
+          if [ "$GPU" = 1 ]; then defconfig=pipa_macos26_gpu_defconfig; fi
           echo "defconfig $defconfig"
+          echo "DEFCONFIG=$defconfig" >> "$GITHUB_ENV"
           python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig "$defconfig"
         env:
           UFS: ${{ contains(github.event.head_commit.message, '[kernel-ufs]') && '1' || '0' }}
+          GPU: ${{ contains(github.event.head_commit.message, '[kernel-gpu]') && '1' || '0' }}
 
       - name: Compile and link the native kernel (no prelink)
         id: kernel
@@ -175,20 +183,26 @@ jobs:
         env:
           LINKED: ${{ contains(github.event.head_commit.message, '[kernel-ufs]') && 'yes' || 'no' }}
 
-      # G3: the pinned Adreno650 fork (with patches/adreno650) and its kits compiled by the device recipe
-      # build-adreno650.py with this kernel's compile records, and its kernel symbols looked up in this kernel. Not
-      # linked: the macOS profile selects no GPU. A failure here is a finding about the fork on xnu-12377 and is shown as
-      # such; it does not stop the kernel steps after it.
-      - name: Adreno650 against xnu-12377 (compiled, not linked)
+      # G3: the pinned Adreno650 fork (with patches/adreno650) and its kits, built by the kernel step (component:Adreno650,
+      # build-adreno650.py) with this kernel's compile records, and libPipaGpu.a (build-pipa-gpu.py: GopFramebuffer's
+      # presenter, package/BootLogExport.c). Every symbol the two archives need must be defined by them or by this kernel;
+      # linked with [kernel-gpu], not linked otherwise. A failure fails the run.
+      - name: Adreno650 and libPipaGpu.a against xnu-12377
         id: adreno
-        if: always() && steps.kernel.outcome == 'success'
-        continue-on-error: true
-        run: python3 scripts/pipa_adreno_xnu_check.py --unixnu "$UNIXNU" --modules "$WORK/modules.json" --json "$WORK/adreno-xnu.json"
+        if: always() && steps.kernel.outcome != 'skipped'
+        run: |
+          if [ "${{ steps.kernel.outcome }}" != success ]; then
+            python3 scripts/pipa_adreno_xnu_check.py --unixnu "$UNIXNU" --logs
+            exit 1
+          fi
+          python3 scripts/pipa_adreno_xnu_check.py --unixnu "$UNIXNU" --linked "$LINKED" --json "$WORK/adreno-xnu.json"
+        env:
+          LINKED: ${{ contains(github.event.head_commit.message, '[kernel-gpu]') && 'yes' || 'no' }}
 
       - name: Prelink with the official macOS 26.5 kernelcache
         id: prelink
         if: >-
-          steps.kernel.outcome == 'success' &&
+          !cancelled() && steps.kernel.outcome == 'success' &&
           (inputs.prelink || contains(github.event.head_commit.message, '[kernel-prelink]'))
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -223,7 +237,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           mv "$UNIXNU/out/pipa" "$UNIXNU/out/pipa.first"
-          python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig pipa_macos26_defconfig
+          echo "second build: $DEFCONFIG"
+          python3 scripts/pipa_unixnu.py run --work "$WORK" -- defconfig "$DEFCONFIG"
           python3 scripts/pipa_unixnu.py run --work "$WORK" -- build kernel --skip-prelink -j "$(sysctl -n hw.ncpu)"
           python3 scripts/kernel_report.py --work "$UNIXNU/out/pipa" --json "$WORK/kernel-report-2.json" > /dev/null
           python3 scripts/kernel_report.py --compare "$WORK/kernel-report.json" "$WORK/kernel-report-2.json" --json "$WORK/repro.json"

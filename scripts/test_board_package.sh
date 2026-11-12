@@ -10,7 +10,7 @@ mkdir -p "$out"
 cc=${CC:-cc}
 flags=(-std=gnu11 -O2 -Wall -Wextra -Werror)
 pass=0
-for t in BacklightBoardTests ButtonsTests GeniI2cTests GesturesTests GpuPowerBoardTests NativeBatteryTests PanelBoardTests PanelLinkTests PipaStorageGuardTests PowerSupplyBoardTests TouchBoardTests TouchVendorTests; do
+for t in BacklightBoardTests BootLogExportTests ButtonsTests GeniI2cTests GesturesTests GpuPowerBoardTests NativeBatteryTests PanelBoardTests PanelLinkTests PipaStorageGuardTests PowerSupplyBoardTests TouchBoardTests TouchVendorTests; do
 	"$cc" "${flags[@]}" -o "$out/$t" "$pkg/$t.c"
 	"$out/$t"
 	pass=$((pass + 1))

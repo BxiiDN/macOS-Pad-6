@@ -57,6 +57,38 @@ def main():
     page = 0x4000   # XnuPrelink's PAGE: the native __TEXT starts on a 16 KiB boundary inside the hole
     usable = [(b - ((a + page - 1) & -page), a, b) for a, b in holes]
     fit = max(usable, default=(0, 0, 0))
+    # The two other limits of fileset_layout.Layout, so a bigger kernel shows which one it reaches first:
+    #  - native __DATA_CONST goes at the start of the collection's __DATA_CONST, __LASTDATA_CONST right after it, and
+    #    both must end before the first retained kext constants ("Native constants follow retained kext constants");
+    #  - native __TEXT_EXEC follows the last retained kext code, __KLD follows it, and the end must stay below the
+    #    collection's __DATA ("Native code would collide with collection data").
+    def seg(image, name):
+        return next((s for s in image.segments if s["name"] == name), None)
+
+    def align(v):
+        return (v + page - 1) & -page
+
+    retained = []
+    for name, (_, offset) in cache.entries.items():
+        if name == "com.apple.kernel" or closure is not None and name not in closure:
+            continue
+        retained += [(s["va"], s["va"] + s["size"]) for s in Image(cache.data, offset).segments
+                     if s["size"] and s["name"] != "__LINKEDIT"]
+    limits = {}
+    const_root, nconst, nlast = seg(cache, "__DATA_CONST"), seg(native, "__DATA_CONST"), seg(native, "__LASTDATA_CONST")
+    if const_root and nconst:
+        end = align(const_root["va"] + nconst["size"]) + (nlast["size"] if nlast else 0)
+        kexts = [b for b, e in retained if const_root["va"] <= b < const_root["va"] + const_root["size"]]
+        if kexts:
+            limits["data_const"] = {"native_bytes": nconst["size"] + (nlast["size"] if nlast else 0),
+                                    "first_retained_kext_constants": hex(min(kexts)), "margin_bytes": min(kexts) - end}
+    exec_root, nexec, nkld = seg(cache, "__TEXT_EXEC"), seg(native, "__TEXT_EXEC"), seg(native, "__KLD")
+    data_root = seg(cache, "__DATA")
+    if exec_root and nexec and data_root:
+        kept = max([exec_root["va"]] + [e for b, e in retained if exec_root["va"] <= b < exec_root["va"] + exec_root["size"]])
+        end = align(align(kept) + nexec["size"]) + (nkld["size"] if nkld else 0)
+        limits["text_exec"] = {"native_bytes": nexec["size"] + (nkld["size"] if nkld else 0), "after_kext_code": hex(align(kept)),
+                               "collection_data": hex(data_root["va"]), "margin_bytes": data_root["va"] - end}
     report = {
         "prelink_text": {"va": hex(lo), "size": hex(root["size"])},
         "native_text_size": hex(need),
@@ -69,6 +101,7 @@ def main():
         "largest_usable_after_alignment": hex(fit[0]),
         "fits": fit[0] >= need,
         "margin_bytes": fit[0] - need,
+        "other_limits": limits,
         "first_entries": [dict(e, va=hex(e["va"]), size=hex(e["size"])) for e in entries[:40]],
     }
     text = json.dumps(report, indent=2)

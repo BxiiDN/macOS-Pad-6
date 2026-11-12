@@ -43,7 +43,8 @@ BOARD = ROOT / "devices/pipa"
 PROFILE = ROOT / "profiles/macos-26.5/unixnu/macos-26.5-25F71"
 UNIXNU_PATCHES = ROOT / "patches/unixnu"
 # Patch series this repository applies to a fetched feed source, by source name (each patch says what and why).
-FEED_PATCHES = {"Adreno650": ROOT / "patches/adreno650", "ShengUfs": ROOT / "patches/shengufs"}
+FEED_PATCHES = {"Adreno650": ROOT / "patches/adreno650", "ShengUfs": ROOT / "patches/shengufs",
+                "GopFramebuffer": ROOT / "patches/gopframebuffer"}
 DEFAULT_OS = "macos-26.5-25F71"
 OVERRIDE_OS = "ipados-17.7.11-21H461"
 DEFAULT_WORK = ROOT / "build/pipa-unixnu"

@@ -1,0 +1,118 @@
+From: macOS-Pad-6 <noreply@anthropic.com>
+Subject: [PATCH] NativeGOPPresenter: the offering display driver names the swap's completion
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+NativeGOPPresenter (xVanTuring/GopFramebuffer 14c7dffb, the pin that pairs with the Adreno650 fork) finished every
+offered swap by calling native_legacy_gpu_complete, which NativeLegacyDisplay.cpp defines. That driver binds the
+original IOMobileFramebufferLegacy class of an iPadOS (or a fixture-described macOS 27.3) fileset; no macOS 26.5
+fixture exists, so pipa's macOS kernel cannot link it, and the presenter could not be linked without a definition of
+that call. The presenter itself is plain IOKit (PE_current_console, mapDeviceMemoryWithIndex, IOUserClient) and is
+what provides the two GPU hand-off entry points Adreno650's NativeAdrenoPublish.cpp calls:
+native_gop_handoff_call and native_gop_handoff_memory.
+
+This keeps the completion with the swap: native_gop_gpu_offer_with() takes the call that finishes or fails the
+frame, and completeSwap/abandonSwap call that one. native_gop_gpu_offer() keeps its signature and its behaviour for
+NativeLegacyDisplay (it passes native_legacy_gpu_complete). With -DNATIVE_GOP_OFFER_WITH_ONLY=1 (pipa's macOS
+build, devices/pipa/scripts/build-pipa-gpu.py) that legacy entry point and its reference are not compiled, so no
+definition has to be invented for a display driver that is not there. Nothing else changes: same checks, same
+wire ABI (NativeGOPWire.h), same boot argument (sheng-fb-gpu=1 for GPU mode).
+
+---
+diff --git a/NativeGOPPresenter.cpp b/NativeGOPPresenter.cpp
+index 8d4c4a7..e448a1b 100644
+--- a/NativeGOPPresenter.cpp
++++ b/NativeGOPPresenter.cpp
+@@ -17,10 +17,16 @@ volatile uint64_t native_gop_gpu_offers,native_gop_gpu_completions,native_gop_gp
+  * and [5] the longest such wait (ns), [6] total ns waited in timed-out calls. A timed wait that returns long before its deadline shows here. */
+ volatile uint64_t native_gop_wait_stats[7];
+ IOService *native_gop_presenter_create(void);
+-bool native_gop_gpu_offer(IOService *,void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height);
+ void native_gop_presenter_set_source(IOService *presenter,IOService *nub);
+-// Provided by the display driver: finishes (status 0) or fails the swap that was offered.
++// The display driver offers a frame with the call that finishes (status 0) or fails it; the presenter keeps the call with the swap.
++typedef void (*native_gop_swap_complete_t)(void *display,int status);
++bool native_gop_gpu_offer_with(IOService *,void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height,
++                               native_gop_swap_complete_t complete);
++#if !(defined(NATIVE_GOP_OFFER_WITH_ONLY) && NATIVE_GOP_OFFER_WITH_ONLY)
++bool native_gop_gpu_offer(IOService *,void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height);
++// Provided by NativeLegacyDisplay: finishes (status 0) or fails the swap that was offered through native_gop_gpu_offer.
+ void native_legacy_gpu_complete(void *display,int status);
++#endif
+ }
+ class NativeGOPClient;
+ class NativeGOPPresenter;
+@@ -37,7 +43,7 @@ class NativeGOPPresenter : public IOService {
+     // GPU hand-off (sheng-fb-gpu=1): one offered frame at a time, from the display driver to the privileged client.
+     bool gpuMode=false,gpuClient=false;
+     struct {bool offered,delivered;uint64_t sequence;void *display;IOMemoryDescriptor *memory;IOMemoryMap *map;
+-            uint64_t stride;uint32_t width,height;} swap={};
++            uint64_t stride;uint32_t width,height;native_gop_swap_complete_t complete;} swap={};
+     uint64_t swapSequence=0;
+     // The client task's mappings of the frames it was handed, kept across swaps: the compositor cycles through a few surfaces, so the
+     // client imports each one into the GPU once instead of every frame (on the TB128FU each frame pinned and mapped about 2400 pages and
+@@ -54,7 +60,7 @@ public:
+     void setMemorySource(IOService *source) {memorySource=source;}
+     static IOReturn handoffCall(uint32_t op,task_t task,const void *in,size_t inSize,void *out,size_t outSize);
+     static IOMemoryDescriptor *handoffMemory();
+-    bool offer(void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height);
++    bool offer(void *display,IOMemoryDescriptor *,uint64_t stride,uint32_t width,uint32_t height,native_gop_swap_complete_t complete);
+ private:
+     IOReturn transfer(task_t,const NGPPresent &,NGPTransfer *);
+ public:
+@@ -137,13 +143,14 @@ IOReturn NativeGOPPresenter::transfer(task_t task,const NGPPresent &q,NGPTransfe
+ }
+ // The display driver offers a finished frame. Accepted only while the privileged GPU client is alive and waiting for work; otherwise the
+ // display driver keeps its own path (counted by it as a fallback).
+-bool NativeGOPPresenter::offer(void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,uint32_t height) {
+-    if(!gpuMode || !memory || !display || !gate)return false;
++bool NativeGOPPresenter::offer(void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,uint32_t height,
++                               native_gop_swap_complete_t complete) {
++    if(!gpuMode || !memory || !display || !complete || !gate)return false;
+     IOLockLock(gate);
+     bool accepted=online && gpuClient && !swap.offered;
+     if(accepted) {
+         memory->retain();
+-        swap={true,false,++swapSequence,display,memory,nullptr,stride,width,height};
++        swap={true,false,++swapSequence,display,memory,nullptr,stride,width,height,complete};
+         native_gop_gpu_offers=native_gop_gpu_offers+1;
+         IOLockWakeup(gate,&swap,false);
+     }
+@@ -210,7 +217,7 @@ IOReturn NativeGOPPresenter::completeSwap(uint64_t sequence,int status) {
+     OSSafeReleaseNULL(done.map);done.memory->release();
+     if(status)__atomic_fetch_add(&native_gop_gpu_failures,1,__ATOMIC_RELAXED);
+     else native_gop_gpu_completions=native_gop_gpu_completions+1;
+-    native_legacy_gpu_complete(done.display,status);return kIOReturnSuccess;
++    done.complete(done.display,status);return kIOReturnSuccess;
+ }
+ // The client went away with a frame outstanding: the display driver is told it failed, so it can use its own path instead of waiting forever.
+ void NativeGOPPresenter::abandonSwap() {
+@@ -223,7 +230,7 @@ void NativeGOPPresenter::abandonSwap() {
+     if(!done.offered)return;
+     OSSafeReleaseNULL(done.map);if(done.memory)done.memory->release();
+     __atomic_fetch_add(&native_gop_gpu_abandoned,1,__ATOMIC_RELAXED);
+-    native_legacy_gpu_complete(done.display,kIOReturnAborted);
++    done.complete(done.display,kIOReturnAborted);
+ }
+ void NativeGOPPresenter::flushCache() {
+     if(!gate)return;
+@@ -236,10 +243,17 @@ void NativeGOPPresenter::flushCache() {
+ extern "C" void native_gop_presenter_set_source(IOService *presenter,IOService *nub) {
+     if(NativeGOPPresenter *p=OSDynamicCast(NativeGOPPresenter,presenter))p->setMemorySource(nub);
+ }
+-extern "C" bool native_gop_gpu_offer(IOService *presenter,void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,uint32_t height) {
++extern "C" bool native_gop_gpu_offer_with(IOService *presenter,void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,
++                                          uint32_t height,native_gop_swap_complete_t complete) {
+     NativeGOPPresenter *p=OSDynamicCast(NativeGOPPresenter,presenter);
+-    return p && p->offer(display,memory,stride,width,height);
++    return p && p->offer(display,memory,stride,width,height,complete);
++}
++#if !(defined(NATIVE_GOP_OFFER_WITH_ONLY) && NATIVE_GOP_OFFER_WITH_ONLY)
++// NativeLegacyDisplay's entry point, unchanged for it: its swaps finish through native_legacy_gpu_complete.
++extern "C" bool native_gop_gpu_offer(IOService *presenter,void *display,IOMemoryDescriptor *memory,uint64_t stride,uint32_t width,uint32_t height) {
++    return native_gop_gpu_offer_with(presenter,display,memory,stride,width,height,native_legacy_gpu_complete);
+ }
++#endif
+ // Entry points for the GPU client that reaches the hand-off through an already admitted connection (the Adreno accelerator's user client, which
+ // the original sandbox profiles allow where they do not allow this service): op 0 mode, 2 wait for a frame, 3 complete it (the NGP_METHOD_*
+ // numbers). Same checks as the service's own methods; sizes are the wire records'.
