@@ -5,7 +5,9 @@ retained --local-module source and could not name it in [components] include. Th
 depends on the kits the pipa recipe links (AdrenoPM4, AdrenoFirmware, ArmSmmu4K; not Sm8550Platform: the A650 build
 leaves sheng's GMU platform, config and service out and uses the board package's A650 cold start instead), and builds
 with the device script build-adreno650.py (devices/pipa/scripts, the recipe of UniXNU-pipa format 1), whose archive is
-build/adreno650/libAdreno650.a. os_abi is the iPadOS 17 profile only: nothing has built the fork for arm64e.
+build/adreno650/libAdreno650.a. os_abi: the iPadOS 17 profile it ran under, and macOS 26.5, against whose xnu-12377
+kernel macOS-Pad-6's kernel step compiles and links it (arm64e, kernel-build attempts 17-18; with libPipaGpu.a for
+the hand-off and export symbols). verified_devices stays empty: no GPU result exists for macOS.
 
 Applied by macOS-Pad-6's scripts/pipa_unixnu.py to its UniXNU copy and meant as the upstream proposal. Resolution
 tested on the host (pipa_unixnu.py check, tests/test_unixnu_patches.py); the driver was not built.
@@ -29,7 +31,7 @@ index 8e9fb7d..1703543 100644
 +revision = "01db67e0620fe0e70ab8cbce533cbdb1369f5922"
 +path = "drivers/Adreno650"
 +hardware = ["Adreno 650", "SM8250"]
-+os_abi = ["ipados-17.7.11-21H461"]
++os_abi = ["ipados-17.7.11-21H461", "macos-26.5-25F71"]
 +board_dependencies = ["GMU, SQE and zap firmware", "GPU power policy", "A650 cold start (board package A650Gmu.c)", "reserved memory"]
 +verified_devices = []
 +dependencies = ["AdrenoPM4", "AdrenoFirmware", "ArmSmmu4K"]
