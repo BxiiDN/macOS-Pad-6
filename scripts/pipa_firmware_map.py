@@ -129,7 +129,7 @@ def analyse(uefi=UEFI, board=pm.BOARD):
           ", ".join(f"{a:#x}+{n:#x}" for a, n in only_dt) or "all covered")
     # The macOS window on a map with the firmware's reservations. Needs MemoryWindow.h from the UniXNU submodule; when
     # it is absent (a bare checkout) the window checks are skipped, the boot-image and reservation checks still run.
-    row, model, excluded = {"base": 0}, {"base": 0}, []
+    row, model, excluded, in_window = {"base": 0}, {"base": 0}, [], []
     try:
         win = pm.Window()
     except FileNotFoundError:

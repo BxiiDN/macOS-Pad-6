@@ -1,6 +1,6 @@
 # Kesiapan uji boot pertama (pipa, macOS Tahoe 26.5)
 
-Diperbarui: 2026-11-12 (sesi 10). Baseline sesi: `b6ada11`. Tidak ada yang di-boot, di-flash, atau dijalankan di tablet. Laporan ini memisahkan tiga hal: apa yang terbukti oleh build dan host test, apa yang sudah terintegrasi tetapi belum pernah berjalan di perangkat, dan apa yang masih menghalangi boot.
+Diperbarui: 2026-11-12 (sesi 11: riset boot architecture, memory map, root filesystem; rebuild empat konfigurasi). Baseline sesi: `b6ada11`. Tidak ada yang di-boot, di-flash, atau dijalankan di tablet. Laporan ini memisahkan tiga hal: apa yang terbukti oleh build dan host test, apa yang sudah terintegrasi tetapi belum pernah berjalan di perangkat, dan apa yang masih menghalangi boot.
 
 **Kesimpulan: macOS belum siap di-boot.** Kernel untuk uji pertama (`pipa_macos26_ufs_gpu_defconfig`) sudah ter-build, ter-link, ter-prelink dan reproducible, tetapi `pacstrip`/gerbang ISA, payload dan boot image belum dibuat (ditunda atas instruksi pemilik), tidak ada root filesystem, dan jalur pemulihan Android belum diverifikasi di perangkat. Bagian 3 merincinya.
 
@@ -59,6 +59,21 @@ Tanpa argumen boot board apa pun (board.toml tidak memberikannya), kernel ini be
 | Server render | Adreno650 versi macOS memberi slot 0, mailbox dan ekspor ke `WindowServer` (`patches/adreno650/0004`); `backboardd` tidak mendapat apa pun di macOS |
 | Ekspor log | `boot_log_export_put` menyimpan blob di memori (16 MiB), tanpa UFS |
 | Backlight | `PipaBacklight.c` ter-compile terhadap xnu-12377, tidak di-link (baca-saja) |
+
+## Root filesystem macOS Tahoe 26.5 dan storage SM8250
+
+Riset dari `third_party/UniXNU/docs/concepts/userdata.md`, `porting/dual-system-partition.md`, profil 26.5, dan `docs/evidence/tahoe-26.5`. Belum dikerjakan: `[storage] root = "none"`, storage probe-only. Yang dibutuhkan agar kernel melanjutkan boot setelah inisialisasi:
+
+| Komponen | Keadaan | Bukti/sumber |
+| --- | --- | --- |
+| Driver host UFS SM8250 | `PipaUfs 5c64c01` (ShengUfs) ter-compile dan ter-link (probe-only); jalur baca blok penuh tidak di-compile (`NATIVE_UFS_PROBE_ONLY`) | RP, run UFS |
+| Image root (OS + SystemOS) | OS `402ec952…` (13,07 GB, UDIF+LZFSE), SystemOS cryptex `c775864e…` (7,10 GB, raw), AppOS `3eb6ec4a…`; UUID OS `47719F50-…` | `docs/evidence/tahoe-26.5/images-26.5.json` |
+| Tempat image | jendela di `userdata` lewat manifest `SHNGROOT` (header 1 MiB, window 1 MiB aligned, OS di 0x100000) | `userdata.md` |
+| Pencocokan root | `/chosen/root-matching` = UUID volume OS; `root_match_volume_uuid` profil = `47719F50-…` | profil 26.5 `[payload.adt]` |
+| Kebijakan owner | `trusted-key.bin` + `manifest.bin` (OS, SystemOS) yang ditandatangani, cocok dengan `os_image_sha256`/`systemos_image_sha256` profil | `SourceRootPolicies.cpp`, profil `[root]` |
+| Volume Data (tulis) | seed ramdisk di payload, disajikan dari jendela di akhir `userdata` (FUA); `data-persist=2` untuk tulis | `userdata.md` |
+
+**Penghalang root (keputusan pemilik):** menulis image root ke `userdata` **menghapus data Android**. Alternatif UniXNU `dual-system-partition.md` membuat partisi `unixnu` dari ujung `userdata` (F2FS di-shrink lewat TWRP), yang **mengubah tabel partisi** — keduanya di luar batasan proyek saat ini ("Jangan mengubah partisi, UFS, userdata"). Tanpa salah satunya, tidak ada root, dan akhir boot yang diharapkan tetap panic `Failed to mount root device` di konsol frame buffer. Repo tidak menyediakan langkah untuk keduanya; keduanya butuh izin dan prosedur pemulihan pemilik.
 
 ## 3. Masih menghalangi boot
 
