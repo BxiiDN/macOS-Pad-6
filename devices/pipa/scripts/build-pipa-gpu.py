@@ -113,7 +113,7 @@ def command_for(source, obj, extra):
 
 def main():
     firmware = firmware_source()
-    objects = []
+    objects, failed = [], []
     for source, extra in SOURCES:
         if not source.is_file():
             sys.exit(f'{source}: missing (GopFramebuffer must be a selected component; the board kit must be pipa)')
@@ -122,8 +122,11 @@ def main():
         (out / (source.stem + '.command.json')).write_text(json.dumps(command) + '\n')
         result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
         if result.returncode:
-            sys.exit(f'{source}:\n' + result.stderr[-4000:])
+            failed.append(f'{source}:\n' + result.stderr[-4000:])   # every source is tried, so one round shows all errors
+            continue
         objects.append(obj)
+    if failed:
+        sys.exit('\n'.join(failed))
     archive = out / 'libPipaGpu.a'
     archive.unlink(missing_ok=True)
     subprocess.run(['xcrun', 'ar', 'rcs', archive, *objects], check=True)

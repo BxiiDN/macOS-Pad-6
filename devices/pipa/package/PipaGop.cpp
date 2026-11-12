@@ -10,6 +10,7 @@
 // for frames and lets the GPU copy them) also needs sheng-fb-gpu=1, the presenter's own switch; without it a privileged
 // client can only copy pixels in (NGP_METHOD_PRESENT). Nothing here has run on a tablet.
 #include <IOKit/IOService.h>
+#include <IOKit/IOPlatformExpert.h>
 #include <IOKit/IODeviceMemory.h>
 #include <IOKit/IOLib.h>
 #include <libkern/c++/OSArray.h>
@@ -93,7 +94,7 @@ void pipa_gop_start(void)
     presenter->release();   // the registry holds it now, as it holds the nub
     nub->release();
     pipa_gop_state = 2;
-    IOLog("pipa-gop: presenter on %ux%u, %u bytes a row, %llu bytes at 0x%llx (ready %u)\n", video.v_width,
-          video.v_height, video.v_rowBytes, (unsigned long long)bytes, (unsigned long long)video.v_baseAddr,
-          native_gop_ready);
+    IOLog("pipa-gop: presenter on %lux%lu, %lu bytes a row, %llu bytes at 0x%llx (ready %u)\n",
+          (unsigned long)video.v_width, (unsigned long)video.v_height, (unsigned long)video.v_rowBytes,
+          (unsigned long long)bytes, (unsigned long long)video.v_baseAddr, native_gop_ready);
 }
