@@ -1,0 +1,27 @@
+# pipa_macos26_ufs_defconfig and pipa_macos26_gpu_defconfig together: the kernel for the first boot test, with the source
+# storage (G2, probe-only) and Adreno650 with the board start path (G3). pipa only: no other board reads this file. Both
+# files' comments hold; this one adds nothing of its own:
+#  - XNU_PIPA_SOURCE_STORAGE=1 (zzzzc): native_source_storage_start after vfsinit; nothing runs unless
+#    native-source-storage=1 and native-ufs-probe is a register inspection (2, 6, 7, 8; PipaStorageGuard.h). No root,
+#    no write to UFS: the recipe is built without root (patches/unixnu 0003) and probe-only (0004).
+#  - XNU_PIPA_BOARD_START=1 (zzzzd): pipa_board_start right after it: pipa-gop=1 for the presenter, pipa-gpu=<1..11>
+#    for the GPU (writing modes need pipa-gpu-writes=1).
+#  - libShengSourceStorage.a, libAdreno650.a and libPipaGpu.a force-loaded. The two sets share no symbol: the storage
+#    archive's BootLog.c has the log entry points, libPipaGpu.a's BootLogExport.c only boot_log_export_put.
+#  - -DMACH_ASSERT_EXPR_MAX=40: zzzzb-pipa-long-assert-text.patch's threshold (48 in every other pipa kernel). With both
+#    sets of archives the native __TEXT came to 0x194000, 0x10c0 more than the collection's largest hole (kernel-build
+#    attempt 23); with the text of assert() expressions of 40 bytes and more left out it fits again. Every assert keeps
+#    its check, its trap and its file:line, which names the expression in the pinned source; only the panic text of
+#    those expressions is the shared note. Moving the board's strings to __DATA_CONST instead was rejected: os_log
+#    (IOLog) drops a format string that is not in its image's __TEXT (libkern/os/log.c resolve_dso).
+# Built on the macOS runner only (docs/kernel-build.md); it has not run anywhere.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+
+CONFIG_XNU_BUILD_ARCHIVES=y
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
+CONFIG_XNU_DT_PANIC_REGION=y
+CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
+CONFIG_XNU_ARMVIRT_PLATFORM=n
+CONFIG_XNU_EXTRA_CFLAGS="-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -fmacro-prefix-map={tree}/.cache/xnu-work/= -fmacro-prefix-map={tree}/= -DXNU_PIPA_SOURCE_STORAGE=1 -DXNU_PIPA_BOARD_START=1 -DMACH_ASSERT_EXPR_MAX=40"
+CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-map,{tree}/build/kernel-link.map -Wl,-force_load,{tree}/build/sheng-source-storage/libShengSourceStorage.a -Wl,-force_load,{tree}/build/adreno650/libAdreno650.a -Wl,-force_load,{tree}/build/pipa-gpu/libPipaGpu.a"

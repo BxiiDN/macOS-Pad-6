@@ -22,7 +22,7 @@ jobs:
       - name: SPDX headers on every source file
         run: |
           missing=$(git ls-files '*.c' '*.h' '*.py' '*.sh' '*.yml' '*.txt' \
-            | grep -v -e '^third_party/' -e '^docs/evidence/' \
+            | grep -v -e '^third_party/' -e '^docs/evidence/' -e '^devices/pipa/package/' -e '^devices/pipa/scripts/' \
             | xargs grep -L 'SPDX-License-Identifier' || true)
           if [ -n "$missing" ]; then echo "missing SPDX: $missing"; exit 1; fi
       - name: No Apple binaries or firmware in the tree
@@ -33,6 +33,27 @@ jobs:
         run: python3 -m compileall -q tools tests scripts
       - name: Shell lint
         run: shellcheck scripts/*.sh tests/xnu_shim/check.sh
+      - name: TOML of the board, its feeds and the OS profile parse
+        run: |
+          python3 - <<'EOF'
+          import pathlib, tomllib
+          files = [*pathlib.Path("devices/pipa").glob("*.toml"), *pathlib.Path("profiles").rglob("*.toml")]
+          for f in files:
+              tomllib.loads(f.read_text())
+          print(f"{len(files)} TOML files parse")
+          EOF
+      - name: Paths that devices/pipa/board.toml and its docs name exist
+        run: |
+          for f in scripts/pipa-unixnu.sh scripts/pipa_unixnu.py docs/board-migration.md docs/kernel-build.md docs/hardware-pipa.md \
+                   devices/pipa/configs/pipa_macos26_defconfig devices/pipa/configs/pipa_defconfig devices/pipa/dts/pipa.dts \
+                   devices/pipa/patches/xnu-12377/series devices/pipa/patches/xnu-12377/soc/series devices/pipa/patches/xnu/series; do
+            test -e "$f" || { echo "missing: $f"; exit 1; }
+          done
+          for series in devices/pipa/patches/xnu-12377/series devices/pipa/patches/xnu-12377/soc/series; do
+            grep -v -e '^#' -e '^$' "$series" | while read -r patch; do
+              test -f "$(dirname "$series")/$patch" || { echo "$series names missing $patch"; exit 1; }
+            done
+          done
       - name: Submodule pins match docs/audit.md
         run: |
           for sha in $(git ls-tree -r HEAD third_party | awk '$2=="commit"{print substr($3,1,12)}'); do
@@ -49,6 +70,10 @@ jobs:
           sudo apt-get install -y -qq clang lld llvm
           clang --version | head -1
           llvm-mc --version | head -2
+      - name: UniXNU submodule (DarwinBoot's MemoryWindow.h for tests/hw/test_pipa_memory.py)
+        run: |
+          git submodule update --init --depth 1 third_party/UniXNU
+          git -C third_party/UniXNU submodule update --init --depth 1 drivers/DarwinBoot
       - name: Fetch XNU at the pinned revision (patch check only)
         run: |
           git init -q "$RUNNER_TEMP/xnu"
@@ -69,7 +94,31 @@ jobs:
           python3 scripts/check_patch_chain.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU \
             --profile tahoe-26.5 --json chain-tahoe-26.5.json
           python3 scripts/gen_tahoe_patches.py --xnu "$RUNNER_TEMP/xnu" --unixnu third_party/UniXNU --check
-      - name: Tahoe 26.5 profile is current and resolves in UniXNU (hosted by the format 2 sheng board)
+      - name: devices/pipa (format 2) resolves both OS profiles; its chain applies; its device tree becomes an ADT
+        run: |
+          sudo apt-get install -y -qq device-tree-compiler
+          git -C third_party/UniXNU submodule update --init --depth 1
+          python3 scripts/pipa_unixnu.py check --adt --xnu "$RUNNER_TEMP/xnu" --json pipa-board.json
+      - name: pipa hardware facts of the board code agree with mainline Linux's sm8250-xiaomi-pipa.dts
+        run: |
+          python3 scripts/pipa_hw.py fetch --linux "$RUNNER_TEMP/linux"
+          python3 scripts/pipa_hw.py compile --linux "$RUNNER_TEMP/linux" --out "$RUNNER_TEMP/pipa-mainline.dtb"
+          soc=$(ls -d build/pipa-unixnu/feeds/sm8250-* | head -n 1)
+          python3 scripts/pipa_hw.py check --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --soc "$soc" --json pipa-hw-check.json
+          python3 scripts/pipa_hw.py inventory --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --linux "$RUNNER_TEMP/linux" \
+            --markdown docs/evidence/hardware/pipa-mainline-inventory.md --check
+          python3 scripts/pipa_hw.py drivers --linux "$RUNNER_TEMP/linux" --json pipa-hw-drivers.json
+      - name: pipa A650 GMU inputs generated from the DTB and Linux's a6xx sources, = package/A650Gmu.c (G3)
+        run: python3 scripts/gen_pipa_gmu.py --linux "$RUNNER_TEMP/linux" --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --check
+      - name: Adreno 650 fork's device-tree parser on the pipa GPU and GMU nodes (G3)
+        run: python3 scripts/test_adreno650.py --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --json adreno650-pipa.json
+      - name: G6 memory window, DarwinBoot's MemoryWindow.h on the pipa memory map model
+        run: python3 scripts/pipa_memory.py --dtb "$RUNNER_TEMP/pipa-mainline.dtb" --json pipa-memory.json --check
+      - name: pipa panel, touch and backlight facts agree with Xiaomi's Android device tree source (pipa-t-oss)
+        run: |
+          python3 scripts/pipa_hw.py fetch-vendor --vendor "$RUNNER_TEMP/micode-dt"
+          python3 scripts/pipa_hw.py vendor --vendor "$RUNNER_TEMP/micode-dt" --json pipa-hw-vendor.json
+      - name: Tahoe 26.5 profile also resolves on an upstream format 2 board (UniXNU-sheng, cross-check)
         run: |
           git clone -q https://github.com/UniXNU/UniXNU-sheng "$RUNNER_TEMP/sheng"
           git -C "$RUNNER_TEMP/sheng" checkout -q f3e60cabad093c7330a1fe39ed478bbe7c821173
@@ -87,3 +136,36 @@ jobs:
         with:
           name: cpu-features-probe
           path: build/device/cpu_features_probe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipa-board-status
+          path: |
+            pipa-board.json
+            chain-tahoe-26.5.json
+            pipa-hw-check.json
+            pipa-hw-drivers.json
+            pipa-hw-vendor.json
+            pipa-memory.json
+            adreno650-pipa.json
+          if-no-files-found: ignore
+
+  # The host tests of the board package (devices/pipa/package), on x86 and on arm64. A650GmuTests links
+  # UniXNU's AdrenoFirmware kit, whose HFI transport is written for little-endian AArch64 only, so it runs on
+  # the arm64 runner. These test the board code's logic against modelled registers, not the tablet.
+  board-package:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Board package host tests
+        run: scripts/test_board_package.sh
+      - name: Adreno 650 driver fork, its host tests (G3)
+        run: |
+          git submodule update --init --depth 1 third_party/UniXNU
+          git -C third_party/UniXNU submodule update --init --depth 1 kits/AdrenoPM4 kits/AdrenoFirmware
+          python3 scripts/test_adreno650.py --json "adreno650-host-$(uname -m).json"
+

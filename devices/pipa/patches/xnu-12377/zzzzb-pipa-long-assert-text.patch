@@ -1,0 +1,40 @@
+Leave the text of long assert() expressions out of the pipa kernel.
+
+The native kernel's __TEXT has to fit a hole of the macOS 26.5 kernel collection's __PRELINK_TEXT (XnuPrelink:
+"No room for 0x19c000 bytes in __PRELINK_TEXT"; docs/kernel-build.md). Plain assert() keeps its check, its trap
+and its descriptor (__FILE_NAME__, __LINE__); for expressions longer than MACH_ASSERT_EXPR_MAX bytes (48 unless
+defined) the descriptor points at one shared note instead of the expression's text, so the panic message reads
+"file:line Assertion failed: (long expression omitted: see file:line)". The choice is a constant expression and the
+long literal is not emitted (checked with clang at -O0, -Os, -O2, C and C++: same instructions, shorter
+__cstring). release_assert(), assertf() and assert3u/3s/3p are unchanged.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+diff --git a/osfmk/kern/assert.h b/osfmk/kern/assert.h
+index 4224c9d..fc373dc 100644
+--- a/osfmk/kern/assert.h
++++ b/osfmk/kern/assert.h
+@@ -193,9 +193,22 @@ STATIC_IF_KEY_DECLARE_TRUE(mach_assert);
+ #define mach_assert_enabled_expr(ex) \
+ 	(mach_assert_enabled() || __builtin_constant_p(!(ex)))
+ 
++/*
++ * macOS-Pad-6 (pipa): the text of a long assert() expression is left out of the kernel. The descriptor keeps
++ * __FILE_NAME__ and __LINE__, which name the expression in the published source, and the check and the trap are
++ * unchanged; only the panic message shows MACH_ASSERT_EXPR_OMITTED instead of expressions longer than
++ * MACH_ASSERT_EXPR_MAX bytes. The choice is a constant expression, so the long literal is never emitted. Without it
++ * the kernel's __TEXT does not fit the 26.5 kernel collection's __PRELINK_TEXT (docs/kernel-build.md).
++ */
++#ifndef MACH_ASSERT_EXPR_MAX
++#define MACH_ASSERT_EXPR_MAX 48
++#endif
++#define MACH_ASSERT_EXPR_OMITTED "(long expression omitted: see file:line)"
++#define MACH_ASSERT_EXPR(s) (sizeof(s) > MACH_ASSERT_EXPR_MAX ? MACH_ASSERT_EXPR_OMITTED : (s))
++
+ #define assert(ex) \
+ 	(mach_assert_enabled_expr(ex) && !(ex) \
+-	? (void)mach_assert_abort(#ex) : (void)0)
++	? (void)mach_assert_abort(MACH_ASSERT_EXPR(#ex)) : (void)0)
+ 
+ #define assertf(ex, fmt, args...)  ({ \
+ 	if (mach_assert_enabled_expr(ex) && __builtin_expect(!(ex), 0L)) {      \

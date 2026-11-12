@@ -8,7 +8,7 @@ Milestone sesuai urutan dalam brief proyek. Status per 2026-11-11. Target: **Tah
 | B | Validasi XNU di Snapdragon 870 | upstream: XNU iPadOS 17 jalan. Fitur CPU: probe dibangun | Jalankan `cpu_features_probe` di tablet (adb, tanpa root), lampirkan output ke `docs/evidence/` |
 | C | Integrasi storage | upstream: UFS root jalan (iPadOS) | Sama untuk macOS setelah E |
 | D | Validasi root filesystem | upstream: jalan (iPadOS) | Tiga window macOS (`OS`, `SystemOS`, `App`) |
-| E | Kompatibilitas macOS Tahoe | audit 26.x selesai; profil 26.5 dan rantai patch siap | 1) Migrasi board pipa ke format 2 dan pasang `profiles/macos-26.5/unixnu/macos-26.5-25F71` + seri `profiles/macos-26.5/patches`. 2) Build kernel (runner macOS UniXNU), lalu `pacstrip` pada KC, gerbang `audit --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`. 3) `fastboot boot`; target pertama: launchd. |
+| E | Kompatibilitas macOS Tahoe | audit 26.x selesai; profil 26.5, rantai patch 121/121 dan board format 2 (`devices/pipa`) siap dan dicek CI | 1) ~~Build kernel native~~: compile + link berhasil 2026-11-11 ([kernel-build.md](kernel-build.md)). 2) ~~Prelink dengan kernelcache 26.5~~: berhasil 2026-11-11; berikutnya `pacstrip` pada KC, gerbang `audit --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`. 3) `fastboot boot`; target pertama: panic mount root, lalu launchd. |
 | F | Display & touch untuk macOS | belum | `IOMFBUUID`/`displayUUID` seperti sheng, fixture binding kelas 26C5035r |
 | G | Input | belum | Keyboard & pointer HID mengikuti pola sheng |
 | H | Networking | belum (juga belum ada di iPadOS pipa) | Identifikasi chip Wi-Fi dari DTS stok, lalu driver |

@@ -1,0 +1,394 @@
+# Build kernel macOS Tahoe 26.5 untuk pipa
+
+Status: kernel XNU untuk pipa (macOS Tahoe 26.5, xnu-12377.121.6, arm64e) **berhasil di-compile, di-link, dan di-prelink** dengan kext kernelcache resmi 26.5 (J274AP 25F71) di runner macOS, dan build kernel native-nya **reproducible bit demi bit** (percobaan 8–9, 2026-11-11). Sejak sesi 9 itu berlaku untuk tiga konfigurasi: generik, dengan storage UFS, dan dengan Adreno650 (percobaan 19–21). Kernel collection belum dilewatkan `pacstrip`, belum dimasukkan ke payload, dan **belum di-boot** di perangkat atau emulator. Klaim di halaman ini hanya yang ada buktinya di log run yang ditautkan.
+
+## Apa yang dibangun
+
+`unixnu build kernel` untuk `devices/pipa` dengan profil `macos-26.5-25F71`:
+
+1. Sumber xnu-12377.121.6 (`ac9718fb1af6`) ditambah 123 patch, urut sesuai `board.toml` (arch arm64e UniXNU → SoC SM8250 arm64e → OS macOS 26.5 → device pipa: AMP, null-PAC, FGE, default fitur yang belum ada, teks assert panjang).
+2. Konfigurasi: `configs/common.config` (arm64e) + `sm8250.config` + `macos.config` + `pipa_macos26_defconfig` (generik), `pipa_macos26_ufs_defconfig` (dengan storage UFS, `[kernel-ufs]`), `pipa_macos26_gpu_defconfig` (dengan Adreno650, `[kernel-gpu]`) atau `pipa_macos26_ufs_gpu_defconfig` (keduanya, `[kernel-ufs-gpu]`).
+3. Arsip yang di-link ke kernel: corecrypto sumber (dua kali, kedua dengan namespace), ArmDTPlatform, ArmCpu cabang pipa, libpthread kernel.
+4. Hasil: kernel native `mach.development.bcm2837` (Mach-O `MH_EXECUTE`, arm64e), lalu (tanpa `--skip-prelink`) prelink dengan kext dari kernelcache J274AP 26.5 asli.
+
+Kernel ini sengaja hanya jalur generik: CPU, interrupt, timer, platform expert. Tanpa storage, display, input, dan GPU (celah G2, G3, G5 di [board-migration.md](board-migration.md)), jadi akhir yang diharapkan saat boot adalah panic `Failed to mount root device`, seperti kernel pertama format 1.
+
+## Kesiapan (diperiksa di setiap push oleh CI)
+
+| Syarat | Status | Bukti |
+| --- | --- | --- |
+| Board format 2 di-resolve UniXNU untuk 26.5 dan override iPadOS | siap | `scripts/pipa-unixnu.sh check` |
+| 123/123 patch apply ke xnu-12377.121.6 dalam urutan board | siap | `check --xnu`, `check_patch_chain.py` |
+| Patch ARMv8.2 (null-PAC, FGE) sesuai sumber `kernel/` | siap | `gen_tahoe_patches.py --check` |
+| Device tree → ADT dengan nilai board | siap | `check --adt` |
+| ArmCpu cabang pipa dari pin `feeds.toml` | siap (resolusi) | G1 di board-migration.md |
+| Toolchain kernel step (macos-26, Xcode 26.6, SDK iphoneos 26.5) | siap | percobaan 1 |
+| Kompilasi XNU arm64e dengan rantai board | **berhasil** | percobaan 1 (119 patch), 2 (120), 8–9 (121) |
+| Arsip: corecrypto ×2, ArmDTPlatform, ArmCpu cabang pipa, libpthread | **berhasil dibangun** terhadap header xnu-12377 | percobaan 1 |
+| Linking kernel native | **berhasil** di percobaan 2 (percobaan 1 gagal pada 5 simbol) | lihat riwayat |
+| Lapisan ARMv8.2 ter-link | **ya**: simbol FGE ada; di kode mesin `sleh_synchronous` memanggil `fge_xnu_handle` dan `ml_addrperm_pacga` berbadan null-PAC | percobaan 2, 8–9 |
+| `__TEXT` native muat di `__PRELINK_TEXT` 26.5 | **ya**: `0x188000` (awal `0x19c000`), sisa 42.976 byte | percobaan 8 |
+| Tanpa import chained fixup | **ya** (0 import) | percobaan 9 |
+| Prelink dengan kernelcache 26.5 | **berhasil** di percobaan 9 (percobaan 3–8 gagal: tata letak, lalu import) | lihat riwayat |
+| Build bit-for-bit reproducible | **ya**: kernel native dan kernel collection identik antar-build dan antar-commit dengan input kernel yang sama | percobaan 8, 9, 12 |
+| Kernel dengan storage UFS (probe-only) ter-link dan ter-prelink | **ya**: 0 import, sisa `__PRELINK_TEXT` 10.208 byte | percobaan 15 |
+| Kernel dengan Adreno650 (`pipa_macos26_gpu_defconfig`) ter-link dan ter-prelink | **ya**: 0 simbol tak ter-resolve, 0 import, `__TEXT` tetap `0x188000`, reproducible; sejak sesi 10 dipanggil dari `bsd_init` lewat `pipa_board_start` | percobaan 17–18 |
+| Kernel uji pertama UFS + Adreno650 (`pipa_macos26_ufs_gpu_defconfig`) | **ya**: compile, link, prelink; 0 import, 0 simbol tak ter-resolve; build kedua dan run kedua identik (native, link map, simbol, kernel collection) | percobaan 24–25 |
+| `pacstrip` + gerbang ISA pada kernel collection | belum | |
+| Boot di tablet | belum | |
+
+## Toolchain
+
+- **macOS**: Xcode dengan SDK iphoneos, plus `cmake`, `ninja`, `unifdef` (Homebrew). UniXNU dikembangkan di sini.
+- **Linux**: `sudo third_party/UniXNU/scripts/linux/setup-toolchain.py` membangun clang dengan `__builtin_xnu_type_*` (patch LLVM), cctools-port `1030.6.3-ld64-956.6`, mig, iig-port, lzfse. Butuh root, paket distro, dan build LLVM penuh.
+
+## Menjalankan
+
+```sh
+git submodule update --init --depth 1 third_party/UniXNU
+git clone https://github.com/UniXNU/UniXNU ../UniXNU-build && git -C ../UniXNU-build checkout 3fd6a3cf0e6f2eba5d3de3a4d1912e2db23a0fc4
+git -C ../UniXNU-build submodule update --init --depth 1
+scripts/pipa_unixnu.py prepare --unixnu ../UniXNU-build --in-place
+scripts/pipa-unixnu.sh fetch
+scripts/pipa-unixnu.sh defconfig pipa_macos26_defconfig
+scripts/pipa-unixnu.sh build kernel --skip-prelink      # kompilasi + link kernel native saja
+```
+
+Di GitHub Actions: `.github/workflows/kernel-build.yml` (runner `macos-26`, Xcode 26.6) menjalankan langkah yang sama, lalu `scripts/kernel_report.py` (ukuran, SHA-256, header Mach-O, simbol FGE, sensus ISA). Workflow berjalan lewat `workflow_dispatch` atau push ke `board-migration-wip` yang pesan commit-nya memuat `[kernel-build]`. Yang diunggah hanya log teks dan laporan JSON; kernel dan input Apple dihapus di akhir job.
+
+`--in-place` memasang profil 26.5 ke clone UniXNU tersendiri, karena `unixnu fetch` memperbarui submodul checkout tempat ia berjalan. Tidak ada langkah di atas yang menyentuh tablet.
+
+## Riwayat percobaan
+
+### Percobaan 1 — 2026-11-11, commit `7f9368b`, run [42978533038](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42978533038): link gagal
+
+- Runner `macos-26`, Xcode 26.6, SDK iphoneos 26.5. Board check lolos di runner (sama dengan CI).
+- `unixnu fetch` dan `defconfig pipa_macos26_defconfig` berhasil. 119 patch apply di pohon build.
+- Pass bootstrap: seluruh XNU ter-compile; link gagal (diharapkan pada pass ini, ia hanya meninggalkan compile record).
+- Arsip: `build-corecrypto-14.py` (dua kali), `component-ArmDTPlatform`, `component-ArmCpu` (cabang pipa `a9c4585`, `-Werror`), `build-libpthread-kernel.py` semuanya selesai.
+- Pass penuh: kompilasi selesai, **link `mach.development.bcm2837.unstripped.noctf` gagal**, `Undefined symbols for architecture arm64e.kernel`:
+  - `_source_corecrypto14_original`, `_source_corecrypto14_start_once` (dari `OSKext.cpo`): `macos.config` memilih `XNU_CRYPTO_BOOTSTRAP="prelinked"`, yang meng-compile `prng_random.c` dengan `-UXNU_SOURCE_CORECRYPTO14`, sedangkan hunk OSKext di `native-security-init.patch` (seri arm64e) tetap memanggil keduanya. UniXNU-sheng (macOS, satu-satunya kernel macOS UniXNU yang sudah jalan) memakai `"source"`.
+  - `_native_owner_root_accepted`, `_native_owner_root_mount_device` (dari `vfs_syscalls.o`): `macos-owner-root-authenticated-open.patch` (seri OS) memakai global audit owner-root yang hanya didefinisikan dengan `XNU_OWNER_ROOT_AUDIT` (butuh driver storage sumber; pipa belum punya).
+  - `_native_exit_trace` (dari `kern_exit.o`): hook board dari `macos-droidvm-k27-parity.patch`; UniXNU-sheng mendefinisikannya di package board.
+- Tidak ada kernel yang ter-link. Laporan kernel: tidak ada biner.
+
+Perbaikan (commit berikutnya): `pipa_macos26_defconfig` memilih `CONFIG_XNU_CRYPTO_BOOTSTRAP="source"`; patch device baru `zzzz-pipa-macos-absent-features.patch` memberi default "fitur tidak ada": tidak ada root owner yang diterima (open terautentikasi tetap `EAUTH`, seperti XNU asli) dan `native_exit_trace` weak no-op. Rantai menjadi 120/120.
+
+### Percobaan 2 — 2026-11-11, commit `699cbbe`, run [42980033161](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42980033161): **compile dan link berhasil**
+
+- Rantai 120 patch, `CONFIG_XNU_CRYPTO_BOOTSTRAP="source"`. Runner, Xcode, SDK sama dengan percobaan 1.
+- Pass bootstrap gagal link seperti dirancang (arsip corecrypto belum ada; `_source_corecrypto14_bootstrap` dari `prng_random.o`). Kelima arsip lalu dibangun, dan pass penuh me-link kernel tanpa error. UniXNU menulis `kernel/kernel.macho` (mode `native-only`, `--skip-prelink`).
+- Kernel (`scripts/kernel_report.py`, kernel tetap di runner dan dihapus di akhir job):
+
+| | |
+| --- | --- |
+| File | `tree/build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf` |
+| Ukuran | 25.135.384 byte |
+| SHA-256 | `8f7257419dfbfe0e998862a15edd5d56f669b26e588a13ca872efd43512c9688` |
+| Mach-O | `MH_EXECUTE`, CPU arm64, subtype **arm64e** (caps `0xc0`), 27 load command |
+| Segmen | `__TEXT` @ `0xfffffff007004000`, `__TEXT_EXEC` 10,0 MiB, `__DATA`, `__BOOTDATA`, segmen `__PRELINK_*` kosong (belum di-prelink), `__LINKEDIT` |
+| Simbol FGE | `_fge_xnu_init`, `_fge_xnu_handle`, `_fge_emulate`: ada |
+| Sensus ISA (`tools/isa/audit`, statis) | 2.611.725 word kode; 57.243 butuh PAuth (`pac-branch` 33.119, `pac-dp1` 24.113, `pacga` 7, `pac-keyreg` 4); semuanya di kelas yang ditangani FGE, **0 di luar FGE** |
+
+Arti angka sensus: kernel arm64e ini masih berisi instruksi PAC non-hint yang akan trap di Cortex-A77/A55. FGE mengemulasikannya (null PAC), tetapi setiap trap mahal; langkah yang direncanakan adalah `tools/isa/pacstrip` pada kernel collection hasil prelink, lalu gerbang `audit --fail-on pac-dp1,pac-branch,pac-eret,pac-keyreg`. Sensus ini statis (hitungan word di section kode), bukan bukti eksekusi.
+
+Yang **tidak** dibuktikan percobaan 2: kernel belum digabung dengan kext Tahoe 26.5 (prelink), belum di-`pacstrip`, belum dimasukkan ke payload, dan belum dijalankan di perangkat atau emulator.
+
+### Percobaan 3 — 2026-11-11, commit `aacff91`, run [42981285641](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42981285641): kernel ter-link lagi, **prelink gagal**
+
+- Compile + link berhasil lagi (rantai dan konfigurasi sama dengan percobaan 2). SHA-256 kernel native kali ini `643b015d2b60778dec1bf0670e4d022800797d7742b35554bfe5d38a73a3bf41`: berbeda dari percobaan 2, jadi build belum reproducible bit-for-bit (stempel waktu/UUID/versi di biner; belum diselidiki).
+- `build prelink`: kernelcache resmi `UniversalMac_26.5_25F71_Restore.ipsw` dibaca lewat HTTP range, pin SHA-256 profil cocok, pemasangan simbol `by name: 3384 functions, 292 data of 3764 kext-facing targets; 88 unpaired, 0 conflicts`. Lalu `kits/XnuPrelink/fileset_layout.py` berhenti: **`No room for 0x19c000 bytes in __PRELINK_TEXT`**.
+- Arti: XnuPrelink menaruh `__TEXT` kernel native (0x19c000 = 1,61 MiB, kernel DEVELOPMENT) di celah `__PRELINK_TEXT` kernel collection J274AP yang tidak ditempati kext yang dipertahankan (closure dari prelink roots profil). Di KC 26.5 tidak ada celah sebesar itu. Ini batas tata letak, bukan kesalahan kompilasi.
+- Diagnostik untuk percobaan berikutnya: `scripts/prelink_layout.py` (dijalankan workflow bila prelink gagal) mencetak celah-celah itu, kext yang membatasinya, dan selisihnya.
+
+Pilihan perbaikan yang dipertimbangkan (diukur di percobaan 4):
+1. Kecilkan `__TEXT` native (konfigurasi kernel, atau memindahkan section read-only besar keluar dari `__TEXT`).
+2. Kurangi kext yang dipertahankan di sekitar slot kernel.
+3. Ubah XnuPrelink agar boleh menaruh `__TEXT` native di luar `__PRELINK_TEXT` (perubahan di UniXNU, perlu dicek terhadap asumsi XNU tentang urutan segmen).
+
+### Percobaan 4 — 2026-11-11, commit `d811bcb`, run [42982647125](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42982647125): pengukuran tata letak prelink
+
+Compile + link berhasil lagi; prelink gagal dengan pesan yang sama; `scripts/prelink_layout.py` mengukur `__PRELINK_TEXT` kernel collection J274AP 26.5 (setelah rebase XnuPrelink, halaman 16 KiB):
+
+| | |
+| --- | --- |
+| `__PRELINK_TEXT` | `0xfffffe000700c000`, ukuran `0xcc0000` |
+| `__TEXT` `com.apple.kernel` asli | `0x120000` (1,13 MiB) di awal segmen |
+| `__TEXT` kernel native pipa | `0x19c000` (1,61 MiB) |
+| Kext yang dipertahankan (closure roots profil) | 87 |
+| Celah 1 (slot kernel): `0xfffffe000700c000` | `0x15d990`: kurang `0x3e670` (255.600 byte) |
+| Celah 2: setelah `AppleARMWatchdogTimer`, `0xfffffe000717b8a0` | `0x192f40`, terpakai setelah perataan 16 KiB `0x1927e0`: **kurang `0x9820` (38.944 byte, 2,3 %)** |
+| Pembatas celah 1 dan 2 | `com.apple.driver.AppleARMPlatform` (`0x102bb`) dan `com.apple.driver.AppleARMWatchdogTimer` (`0x1c50`), keduanya root profil |
+
+Kesimpulan dari angka ini:
+- Pilihan 2 tidak menolong: celah 1 dan 2 dipisahkan `AppleARMPlatform`, yang dibutuhkan jalur platform macOS UniXNU; tanpa `AppleARMWatchdogTimer` pun celah 2 tetap mulai di `0xfffffe000717c000` setelah perataan.
+- Pilihan 1 cukup bila `__TEXT` native turun sedikitnya **38.944 byte** (muat di celah 2), atau 255.600 byte untuk slot kernel asli. Laporan kernel (`kernel_report.py`) sekarang mencantumkan ukuran setiap section `__TEXT` untuk memilih apa yang dipangkas.
+- Pilihan 3 tetap mungkin, tetapi mengubah UniXNU.
+
+### Percobaan 5 — 2026-11-11, commit `e1a15dc`, run [42984181369](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42984181369): isi `__TEXT` native
+
+Compile + link berhasil lagi (SHA-256 `e415f1c0105be18e7f5667dbde38c565afa36363acfbfbf38d18cfbe139097fd`, ukuran sama 25.135.384 byte). Section `__TEXT` kernel native:
+
+| Section | Byte |
+| --- | --- |
+| `__cstring` | 1.116.153 |
+| `__os_log` | 281.834 |
+| `__const` | 279.432 |
+| `__eh_frame` | 1.712 |
+| `__copyio_vectors` | 360 |
+| `__fips_hmacs` | 32 |
+| jumlah | 1.679.523 (`0x19a0a3`), ditambah header Mach-O di awal segmen |
+
+Agar muat di celah 2, `vmsize` `__TEXT` harus turun dari `0x19c000` ke `0x190000` (tiga halaman 16 KiB), jadi isi section harus berkurang sedikitnya sekitar 41 KB ditambah pertumbuhan header. `__cstring` (1,06 MiB) adalah sasaran utama: string diagnostik yang ditambahkan rantai patch (UniXNU dan pipa) dan string build DEVELOPMENT. Belum ada yang dipangkas.
+
+### Percobaan 6 — 2026-11-11, commit `0c4d725`, run [42987653937](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42987653937): audit ukuran dan reproducibility (baseline)
+
+Hanya pengukuran; kode dan data kernel tidak berubah. `pipa_macos26_defconfig` menambahkan link map ld64 (`-Wl,-map`); `scripts/kernel_size_audit.py` memecah setiap section menurut asal (map) dan string menurut patch yang menambahkannya.
+
+Section kernel native (byte):
+
+| Section | Byte | | Section | Byte |
+| --- | ---: | --- | --- | ---: |
+| `__TEXT_EXEC,__text` | 10.441.504 | | `__TEXT,__os_log` | 281.834 |
+| `__TEXT,__cstring` | 1.116.153 | | `__TEXT,__const` | 279.432 |
+| `__DATA_CONST,__const` | 865.812 | | `__DATA_CONST,__assert` | 195.648 |
+| `__DATA,__common` | 817.976 | | `__TEXT_EXEC,__hib_text` | 4.580 |
+| `__BOOTDATA,__init` | 376.472 | | `__TEXT,__eh_frame` | 1.712 |
+| `__LINKINFO,__symbolsets` | 286.554 | | `__TEXT_EXEC,__commpage_text` | 816 |
+
+Tidak ada `__stubs` atau `__auth_stubs`: kernel di-link statis, tidak ada pemanggilan lewat stub.
+
+Asal `__TEXT,__cstring` (33.375 string): XNU Apple 1.092.232 byte; arsip corecrypto (namespaced) 17.727; pthread 2.139; ArmCpu 912; ArmDTPlatform 258; firehose 53. **Seluruh string yang ditambahkan 120 patch hanya sekitar 3 KB**: yang terbesar `vfs-union-below-walk` 315, `offline-component-load-probes` 294, `payload-boot-memory-report` 288; **FGE 119 byte, null-PAC 0**. `__TEXT,__os_log` (5.560 string, 281.834 byte) hampir seluruhnya Apple. Jadi memangkas pesan diagnostik dari patch tidak mungkin menghasilkan 45 KB.
+
+Reproducibility: dua build dari nol dengan source dan lokasi sama berbeda SHA-256. **Satu-satunya section yang berbeda adalah `__TEXT,__const`**, berisi string versi kernel yang dicap `date` oleh `config/newvers.pl` (08:38:43 vs 08:44:40 UTC); `LC_UUID` mengikutinya. Tabel simbol, tabel string, fixup, dan semua section lain identik; 1.038 entri debug map (N_OSO) sudah bertimestamp nol (`ZERO_AR_DATE`). Urutan arsip dan compiler tidak menimbulkan perbedaan.
+
+(Catatan: angka "build-path prefix 0 byte" di run ini salah ukur: prefix dioper dengan jalur `.../macOS-Pad-6/../UniXNU-build/...` yang belum dinormalisasi. Diperbaiki di commit `0cd50a2` (`kernel_size_audit.py` menormalkan prefix).)
+
+### Percobaan 7 — 2026-11-11, commit `d5e04a6`, run [42989038338](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42989038338): prefix map dan tanggal build tetap
+
+- `-fmacro-prefix-map` untuk pohon build dan salinan XNU-nya: `__FILE__` di `VERIFY()` (`bsd/sys/mcache.h`), `AssertMacros.h` IOKit, dan `cc_macros.h` corecrypto sebelumnya memuat ±104 karakter direktori runner.
+- `KERNEL_BUILD_DATE` (override `newvers.pl` untuk build reproducible) dari waktu commit HEAD, lewat `scripts/pipa_unixnu.py`.
+- Hasil: `__TEXT,__cstring` 1.116.153 → **1.090.601** (−25.552 byte, jumlah string sama 33.375), `__text` tetap 10.441.504 byte. `__TEXT` hanya turun satu halaman (`0x19c000` → `0x198000`); prelink gagal lagi, `No room for 0x198000 bytes in __PRELINK_TEXT`.
+- Perhitungan ulang: celah terbesar terpakai `0x1927e0` setelah perataan 16 KiB, jadi `__TEXT` harus `≤ 0x190000`; isinya harus turun sekitar 45 KB dari awal (bukan 38.944 byte seperti tertulis di percobaan 4, yang belum menghitung header Mach-O dan pembulatan halaman).
+
+### Percobaan 8 — 2026-11-11, commit `d51558b`, run [42991705340](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42991705340): teks assert panjang, **`__TEXT` muat**, build reproducible
+
+- Patch device `zzzzb-pipa-long-assert-text.patch`: `assert()` biasa tetap memeriksa, tetap trap, dan deskriptornya tetap menyimpan `__FILE_NAME__` dan `__LINE__`; untuk ekspresi lebih dari 48 byte deskriptor menunjuk satu catatan bersama `(long expression omitted: see file:line)` alih-alih teks ekspresinya. Diuji dengan clang (C dan C++, `-O0`, `-Os`, `-O2`): instruksi identik, literal panjang tidak dihasilkan. `release_assert`, `assertf`, `assert3u/3s/3p` tidak berubah. Rantai 121/121.
+- Hasil:
+
+| | Awal (percobaan 6) | Percobaan 8 | Selisih |
+| --- | ---: | ---: | ---: |
+| `__TEXT` vmsize | `0x19c000` | **`0x188000`** | −80 KiB (5 halaman) |
+| `__TEXT,__cstring` | 1.116.153 | 1.033.274 | **−82.879** |
+| `__TEXT,__os_log` | 281.834 | 281.834 | 0 |
+| `__TEXT,__const` | 279.432 | 279.432 | 0 |
+| `__TEXT_EXEC,__text` | 10.441.504 | 10.441.504 | 0 |
+| Ukuran file kernel | 25.135.384 | 25.048.600 | −86.784 |
+
+- `scripts/prelink_layout.py`: `__TEXT` native `0x188000` **muat** di celah setelah `AppleARMWatchdogTimer` (`0x1927e0`), **sisa 42.976 byte**.
+- Integrasi tetap: `sleh_synchronous` memanggil `fge_xnu_handle` (1 call site), `ml_addrperm_pacga` diawali badan null-PAC (`orr x0, x0, #1; ret`), sensus ISA sama (57.243 word PAuth, 0 di luar FGE).
+- **Reproducibility**: build kedua dari nol di tempat yang sama menghasilkan kernel identik bit demi bit: SHA-256 `7db1659a583282e1835af9b5ef47aa918eb05996e04ee2234352887781768e00` dan `LC_UUID` sama, tidak ada section atau blob link-edit yang berbeda.
+- Prelink berhenti pada penyebab berikutnya: **`Chained fixup imports are not supported`** (`kc_image.py`). Penyebabnya patch `zzzz` saya sendiri: `native_exit_trace` didefinisikan `weak`, dan definisi weak di executable Mach-O di-bind lewat weak lookup, yang ditulis linker sebagai import chained fixup (lib ordinal −3; direproduksi dengan lld: weak → 1 import, strong → 0). Diperbaiki di commit `50736cd`: definisi biasa (strong).
+
+### Percobaan 9 — 2026-11-11, commit `50736cd`, run [42994058285](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42994058285): **prelink berhasil**
+
+- Kernel native: SHA-256 `ce13aea1586d2e425b10f48170d884f2b0f4af1348ab32ae459f3074e7e5ddec`, 25.048.584 byte, `MH_EXECUTE` arm64e, `__TEXT` `0x188000`, **0 import chained fixup**. `sleh_synchronous` memanggil `fge_xnu_handle`; `ml_addrperm_pacga` berbadan null-PAC.
+- `build prelink`: kernelcache dari `UniversalMac_26.5_25F71_Restore.ipsw` (HTTP range, pin SHA-256 profil). `scripts/prelink_layout.py`: `__TEXT` native muat (sisa 42.976 byte).
+- Hasil: `kernel/kernel.macho`, **kernel collection `MH_FILESET` arm64e**, 135.036.928 byte, SHA-256 `840488d5d4b6ea38df85bbe210b24e170bbe012f28c47ff53936697a5dc66e3c`, `LC_UUID` `29f1b7a9e6a8f673fb8297457a4ba754`, 93 load command, 0 import. Segmen: `__TEXT` @ `0xfffffff007004000`, `__PRELINK_TEXT` (`0xcc0000`), `__DATA_CONST`, `__TEXT_EXEC` (`0x360c000`), `__PRELINK_INFO`, `__DATA`, `__LINKEDIT`, `__KLDDATA`, `__BOOTDATA`.
+- Catatan XnuPrelink (`kernel.json`): `format` `MH_FILESET`; input `kernelcache_sha256` `19ae26f4…` (= pin profil) dan `native_sha256` `ce13aea1…` (= kernel native run ini); entry `com.apple.kernel`; `matcher_version` 8; pemasangan simbol `symbol-names`; closure kext yang dipertahankan dicantumkan (AppleARMPlatform, AppleMobileFileIntegrity, apfs, IOHIDFamily, IOGPUFamily, …). Pemeriksaan regresi prelink UniXNU lolos (langkah berhasil). Isi lengkap catatan: percobaan 10.
+- Sensus ISA kernel collection (statis): 6.526.890 word kode di 80 image arm64e; yang tidak dimiliki SM8250: PAuth 290.710 (`pac-branch` 154.421, `pac-dp1` 136.278, `pacga` 7, `pac-keyreg` 4), SHA3 122, SHA512 32, DIT 21, LRCPC2 4, SB 1. **Semuanya di kelas yang ditangani FGE; 0 di luar FGE.** Tanpa `pacstrip`, setiap instruksi PAC non-hint itu akan trap ke FGE saat dieksekusi; `pacstrip` adalah langkah berikutnya.
+- Reproducibility: build kedua dari nol menghasilkan kernel native `ce13aea1…` lagi (SHA-256 dan `LC_UUID` sama, tidak ada section yang berbeda).
+
+Yang tidak dibuktikan: kernel collection ini belum di-`pacstrip`, belum masuk payload/boot image, dan belum dijalankan. Prelink yang lolos adalah syarat perlu, bukan bukti boot.
+
+### Percobaan 10 — 2026-11-11, commit `c521ea5`, run [42997283204](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42997283204): catatan XnuPrelink lengkap
+
+Prelink berhasil lagi. Catatan `kernel/kernel.json` XnuPrelink (`scripts/prelink_record.py`):
+
+| Kunci | Nilai |
+| --- | --- |
+| `format` | `MH_FILESET` |
+| `inputs.kernelcache_sha256` | `19ae26f46899…` (= pin profil `macos-26.5-25F71`) |
+| `inputs.entry` | `com.apple.kernel` |
+| `closure` | 87 kext dipertahankan |
+| `collection_base` / `native_link_address` | `0xfffffff007004000` / `0xfffffff007004000` |
+| `collection_slide` | `0x1f000000000` |
+| pemasangan simbol (`kernel.map.json`) | `symbol-names`: 3.384 fungsi, 292 data, semuanya lewat nama simbol |
+| **`missing`** | **kosong**: tidak ada target kext yang tidak terpasang |
+| **`stubbed`** | **kosong**: tidak ada target yang di-stub (`allow_missing` false) |
+| `mapping_complete` | **true** |
+| `native_original_branches` | kosong |
+| `personalities_dropped` | 7: hfs.encodings, IOAccessoryManager, IOPCIFamily, IOSerialFamily, IOSkywalkFamily, AppleUSBHostMergeProperties, AppleUSBHostPlatformProperties |
+| `early_security_init` | `com.apple.driver.AppleMobileFileIntegrity` @ `0xfffffe00096f17cc` (= profil) |
+| `runtime_qualified`, `loadable` | **false**: XnuPrelink selalu menulis false; tidak ada yang menguji kernel collection ini saat berjalan |
+| `candidate_bytes` | 135.036.928 |
+
+Jadi pemetaan statisnya lengkap (setiap referensi kext ke kernel terpasang ke simbol kernel native, tanpa stub). Itu belum bukti bahwa kernel collection ini berjalan.
+
+**Reproducibility antar-commit**: kernel native run ini (`4f0e748c…`) berbeda dari percobaan 9 (`ce13aea1…`) meski source kernelnya sama. Satu-satunya perbedaan adalah `__TEXT,__const`, string versi: tanggal dipin dari waktu commit HEAD, dan HEAD berganti karena commit yang hanya mengubah alat dan dokumen. Mulai commit berikutnya tanggal diambil dari commit terakhir yang mengubah input kernel (`devices/pipa`, `profiles`, `kernel`, `third_party`, `.gitmodules`), sehingga commit dokumen atau CI menghasilkan kernel yang identik. Diverifikasi di percobaan 11 dan 12.
+
+### Percobaan 11 — 2026-11-11, commit `984c8f5`, run [42998883741](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/42998883741): semua langkah hijau; pin tanggal antar-commit belum berlaku
+
+- Compile + link: kernel native `226b3dba8eef8dc9e6cb394b0941efb10d015340f21dba466318a60658a7d26b`, 25.048.584 byte, `__TEXT` `0x188000`, 0 import; FGE (`sleh_synchronous` → `fge_xnu_handle`) dan null-PAC (`ml_addrperm_pacga`) terverifikasi di kode mesin; sensus 57.243 word PAuth, 0 di luar FGE.
+- Tata letak: muat, sisa 42.976 byte.
+- Prelink: `MH_FILESET` arm64e 135.036.928 byte, SHA-256 `79d228cc9953dc7c5b1c9a08386e597c172b139180147d0249cf2b669adf7b09`, 0 import, 0 di luar FGE; catatan XnuPrelink: `missing` {}, `stubbed` {}, `mapping_complete` true, 87 kext, 3.384 fungsi + 292 data terpasang lewat nama simbol, input native = kernel run ini.
+- Build kedua dari nol di run yang sama: identik (SHA-256, `LC_UUID`, semua section, link-edit, string versi).
+- Tetapi tanggal versi adalah 09:52:50 UTC (waktu `984c8f5` sendiri), bukan 09:18:20 (`50736cd`, commit input kernel terakhir). Penyebab: `actions/checkout` mengambil 1 commit; di clone dangkal commit itu tampak mengubah setiap path, jadi `git log -1 -- <input>` mengembalikan HEAD. Diperbaiki: `fetch-depth: 0` di `kernel-build.yml`, dan `pipa_unixnu.py` memberi peringatan bila clone dangkal.
+
+### Percobaan 12 — 2026-11-11, commit `4250b45`, run [43011657003](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43011657003): **reproducible antar-commit**
+
+Tidak ada input kernel yang berubah sejak `50736cd`; dengan checkout penuh tanggal build menjadi 09:18:20 UTC, sama dengan percobaan 9 (tanpa peringatan clone dangkal). Hasilnya, dari commit lain dan sekitar empat jam kemudian:
+
+| | Percobaan 9 (`50736cd`) | Percobaan 12 (`4250b45`) |
+| --- | --- | --- |
+| Kernel native (SHA-256) | `ce13aea1586d2e425b10f48170d884f2b0f4af1348ab32ae459f3074e7e5ddec` | **sama** |
+| Kernel collection hasil prelink (SHA-256) | `840488d5d4b6ea38df85bbe210b24e170bbe012f28c47ff53936697a5dc66e3c` | **sama** |
+
+- Build kedua dari nol di run yang sama: identik juga (SHA-256, `LC_UUID`, semua section, link-edit, string versi).
+- Prelink deterministik: input yang sama menghasilkan kernel collection yang sama bit demi bit. Catatan XnuPrelink lagi-lagi `missing` {}, `stubbed` {}, `mapping_complete` true, input native = `ce13aea1…`.
+- FGE dan null-PAC tetap terverifikasi di kode mesin; 0 import chained fixup; tata letak muat dengan sisa 42.976 byte.
+
+Sumber ketidak-reproducible-an yang diaudit:
+- **Timestamp**: string versi dari `newvers.pl`. Satu-satunya sumber; kini dipin.
+- **Debug map (N_OSO)**: sudah nol karena `ZERO_AR_DATE`.
+- **Build path**: tidak lagi di `__cstring` karena prefix map, dan tidak ada di string versi (`runner:ios-obj/...`).
+- **Urutan arsip dan nondeterminisme compiler**: tidak ditemukan; tidak ada section lain yang berbeda.
+- **Metadata build**: `LC_UUID` diturunkan dari isi, jadi ikut sama.
+
+### Percobaan 13 — 2026-11-12, commit `3b3e1be`, run [43132343953](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43132343953): **arsip storage pipa ter-compile** (G2)
+
+`[storage-build]`: setelah langkah kernel, `scripts/pipa_storage_build.py` menjalankan resep UniXNU `build-sheng-source-storage.py` (dengan `patches/unixnu` 0001 + 0003) di tree yang sama, dengan env board (`UNIXNU_SOC=SM8250`, `UNIXNU_SOURCE_STORAGE_ROOT=none`, `UNIXNU_KIT=pipa`, target `macosx` 26.5 25F71) dan IOStorageFamily `7edb88fb` (pin resep, sumber publik). Kernel native juga ter-compile dan ter-link di run ini (`227cbe63…`; tanggal build pindah karena input kernel berubah, keputusan 6).
+
+| | |
+| --- | --- |
+| Arsip | `libShengSourceStorage.a`, 1.511.112 byte; **tidak di-link** ke kernel (profil macOS tidak memilih ShengUfs) |
+| Simbol pipa | semua 13 terdefinisi (`native_source_storage_start`, `native_source_root_policies_load`, `native_verified_block_root_authorized`, `native_ufs_source_create`, `boot_log_tick`, `boot_reset_bootloader`, `pipa_storage_decision`, …) |
+| Saklar SoC | perintah compile `NativeUfs.cpp` memuat `-DNATIVE_UFS_SOURCE_API=1 -DNATIVE_UFS_SM8250=1`; tidak ada `qcom,sm8550-ufshc` di objek |
+| Kebijakan root | bundle 32 byte, 0 kebijakan (tidak ada root dari `userdata`) |
+
+Jalan ke sana (setiap kegagalan nyata, diperbaiki di kode, bukan disembunyikan):
+
+| Run | Commit | Berhenti di | Perbaikan |
+| --- | --- | --- | --- |
+| 43100104425 | `930893d` | Board check: seri patch dilaporkan hilang pada checkout `--in-place` | `series_present` membaca file asli dari `git show HEAD:` (`901576d`) |
+| 43100577481 | `901576d` | resep: `tree/drivers/ShengUfs/NativeUfs.cpp` tidak ada (profil macOS tidak memilih ShengUfs/RamBlock/VerifiedRoot) | `ensure_inputs` me-link dari pin `feeds.toml` dan checkout UniXNU (`71a4597`) |
+| 43102116643, 43103297025 | `71a4597`, `ccab691` | 5 error compile `NativeUfs.cpp`, tidak terlihat di log job | error dicetak dari log per sumber resep (`ccab691`, `b01bb09`) |
+| 43105063854 | `b01bb09` | `kma_flags_t`, `KMA_KOBJECT`, `KMA_DATA`, `kmem_free`, `vm_map_protect`: PipaUfs `5c64c01` memakai antarmuka VM kernel iPadOS 17 | `patches/shengufs/0001`: `vm/vm_kern_xnu.h` + `mach_vm_protect`, seperti pin katalog ShengUfs `99d8bcd` (`8234313`) |
+| 43106623934 | `8234313` | arsip jadi; `native_ufs_source_create` tidak terdefinisi; string compatible tidak ada di objek | `patches/shengufs/0002` (factory pin katalog); saklar SoC dicek dari command line (`3b3e1be`) |
+
+Yang dibuktikan: lima sumber package pipa dan PipaUfs (dengan dua patch) ter-compile terhadap header xnu-12377.121.6 yang di-prepare kernel step, sebagai arm64e. Yang tidak: link ke kernel, perilakunya, apa pun di tablet.
+
+### Percobaan 14 — 2026-11-12, commit `27be73a`, run [43136731212](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43136731212): **storage ter-link**, prelink kurang 6.176 byte
+
+`[kernel-ufs] [kernel-prelink]`: `pipa_macos26_ufs_defconfig` (= generik + `-DXNU_PIPA_SOURCE_STORAGE=1` + `force_load` `libShengSourceStorage.a`), rantai 122 patch (`zzzzc-pipa-source-storage-start.patch`), arsip dibangun oleh kernel step (`component:ShengUfs`, `component:RamBlock`).
+
+- Kernel native ter-link: 25.251.496 byte, SHA-256 `9404d723…`, **0 import chained fixup**; 12 anggota arsip ada di link map; 413 simbol yang dibutuhkan arsip ter-resolve.
+- Prelink gagal: `No room for 0x194000 bytes in __PRELINK_TEXT` (celah terbesar `0x192f40`, margin −6.176 byte).
+
+### Percobaan 15 — 2026-11-12, commit `258f2a4`, run [43138111458](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43138111458): **kernel dengan storage UFS ter-prelink**
+
+Perubahan: `patches/unixnu/0004` (tanpa root → `NativeUfs` probe-only: tanpa `NativeUfsBlock`, `startRoot`, uji blok userdata), `patches/shengufs/0002` memindah `native_ufs_source_create` keluar dari bagian itu.
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.200.784 byte, SHA-256 `6955fd3c1bd12a918ccfe9c9e1294f0be5e8b12c8bd908769119db8bdd25b56a`, 0 import |
+| `__TEXT` native | `0x190000`; celah `0x192f40`, terpakai setelah perataan `0x1927e0`: **sisa 10.208 byte** |
+| Kernel collection | `MH_FILESET` arm64e 135.102.464 byte, SHA-256 `9465acd46fd3ff0d1e660a1ac7497c0d504b28828b569f784ab69e9b7b076cc2`, 0 import; XnuPrelink `missing` {}, `stubbed` {}, `mapping_complete` true, 87 kext |
+| Arsip storage | 1.359.384 byte; `-DNATIVE_UFS_SOURCE_API=1 -DNATIVE_UFS_SM8250=1 -DNATIVE_UFS_PROBE_ONLY=1`; 13 simbol pipa; 385 simbol dari kernel, semua ter-resolve; 12 anggota ter-link; 0 duplicate symbol |
+| Adreno650 (tidak di-link) | 29 objek ter-compile dengan record compile kernel ini, arsip 1.228.856 byte; 388 simbol kernel dibutuhkan, **4 tidak ada**: `native_gop_handoff_call`, `native_gop_handoff_memory`, `boot_log_export_put` (+ stub ptrauth-nya). Langkah ditandai gagal, job lanjut (`continue-on-error`) |
+
+Laporan kesiapan lengkap: [kernel-integration.md](kernel-integration.md). Belum di-boot; `pacstrip` dan payload ditunda.
+
+### Percobaan 16 — 2026-11-12, commit `4e226a7`, run [43139267130](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43139267130): kernel generik setelah integrasi
+
+`[kernel-prelink]` dengan `pipa_macos26_defconfig`: arsip storage tetap dibangun oleh kernel step, tetapi **0 anggotanya di link map** (`--linked no` lulus). Kernel native 0 import, SHA-256 `a222f59bce65605403d9cc8441476325bc4b47c81d182d87c30aa053603820aa`, `__TEXT` `0x188000`, sisa `__PRELINK_TEXT` 42.976 byte, sama seperti sebelum integrasi. Hash berbeda dari `ce13aea1…` karena tanggal build (input kernel berubah) dan nomor baris `bsd_init.c` (patch `zzzzc`). Kernel collection 135.036.928 byte, SHA-256 `eb19a2547852e5f71608fc51cd4b26ed7d834697e9106f4b2ca0fac13357dc6c`, `missing`/`stubbed` {}, `mapping_complete` true. Adreno650: hasilnya sama dengan percobaan 15 (29 objek, 4 simbol kernel tidak ada).
+
+### Percobaan 17 — 2026-11-12, commit `edd874d`, run [43143696276](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43143696276): **kernel dengan Adreno650 ter-link dan ter-prelink**; satu cek salah
+
+`[kernel-gpu] [kernel-prelink]`: `pipa_macos26_gpu_defconfig` (= generik + `force_load` `libAdreno650.a` dan `libPipaGpu.a`). Board memilih `Adreno650` (beserta kit AdrenoPM4, AdrenoFirmware, ArmSmmu4K) dan `GopFramebuffer`; `component:Adreno650` dan `build-pipa-gpu.py` di `[kernel] archives`.
+
+- Compile + link berhasil: 31 anggota arsip di link map, **0 import**, kernel native 25.263.616 byte, SHA-256 `121cf27c…`; `__TEXT` tetap `0x188000`.
+- Prelink berhasil: kernel collection 135.118.848 byte, SHA-256 `8de717f7…`, `missing`/`stubbed` {}, 87 kext.
+- Langkah "Adreno650 and libPipaGpu.a" gagal pada satu nama: `l_boot_log_export_put.ptrauth`, pointer bertanda tangan yang dibuat Apple clang untuk fungsi weak-import (nm mencantumkannya sebagai undefined). Link sudah membuktikan ter-resolve; cek diperbaiki agar memeriksa targetnya (`_boot_log_export_put`), tidak dilewati.
+- Pass pertama `kernel-bootstrap` (record compile) berhenti pada `_corecrypto_kext_start` seperti biasa; itu pass sebelum arsip ada, bukan link akhir.
+
+### Percobaan 18 — 2026-11-12, commit `e5f9929`, run [43145180980](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145180980): kernel GPU, semua langkah lulus, **reproducible**
+
+`[kernel-gpu] [kernel-prelink] [kernel-repro]`, input kernel sama dengan percobaan 17.
+
+| | Hasil |
+| --- | --- |
+| Simbol | 398 dibutuhkan kedua arsip, **0** tidak terdefinisi; `native_gop_handoff_call`, `native_gop_handoff_memory`, `boot_log_export_put` didefinisikan `libPipaGpu.a` dan ada di kernel; `l_boot_log_export_put.ptrauth` → target terdefinisi |
+| Arsip | `libAdreno650.a` 1.229.456 byte (29 anggota; `__TEXT,__text` 117.828, `__TEXT` non-kode ±1,5 KB), `libPipaGpu.a` 324.056 byte (2 anggota) |
+| Kernel native | sama dengan percobaan 17 (`121cf27cf58759cf4a9517a67dc2119ac1cc2d4f2316fea29ee02d9c2ee1e67d`) |
+| Kernel collection | sama dengan percobaan 17 (`8de717f72bc5e96dcea104510571c377d21e774135346515dd1980d2aba920ea`) |
+| Batas prelink | `__PRELINK_TEXT` sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.341.184 (`prelink_layout.py`, baru) |
+| Build kedua | SHA-256, UUID, string versi sama |
+| `PipaBacklight.c` | ter-compile dengan record compile `bsd_init.c` (`-Werror`); 7 simbol yang dibutuhkan ada di kernel; tidak di-link |
+
+### Percobaan 19 — 2026-11-12, commit `59b7883`, run [43145263703](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43145263703): kernel generik, input sesi 9, reproducible
+
+`[kernel-prelink] [kernel-repro]` dengan `pipa_macos26_defconfig`. Semua arsip board dibangun (storage, Adreno650, libPipaGpu), **0 anggota** di link map (`--linked no` lulus untuk ketiganya); 398 simbol yang dibutuhkan arsip GPU semuanya terdefinisi (dua arsip itu sendiri menyediakan hand-off/ekspor).
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.048.584 byte, SHA-256 `f1fc02b07d3e7701a74477aca55357769f8ca8f7b38c01eb8615a27d2f276553`, 0 import |
+| Kernel collection | 135.036.928 byte, SHA-256 `52795685bc03a974a9dec7da1cb5c57e20e548eecc84b57e0188c8cf39df19f9`, `missing`/`stubbed` {}, 87 kext |
+| Batas prelink | `__TEXT` `0x188000`, sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.472.256 |
+| Build kedua | SHA-256 dan UUID sama |
+
+Hash berbeda dari percobaan 16 hanya karena tanggal build (input kernel berubah di sesi 9).
+
+### Percobaan 20 — 2026-11-12, commit `2d19365`, run [43149085043](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43149085043): kernel UFS, input sesi 9, reproducible
+
+`[kernel-ufs] [kernel-prelink] [kernel-repro]`, input kernel sama dengan percobaan 19.
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.200.784 byte, SHA-256 `9d5e23eefc2f7a950fd8f7c15939e407e5f6a3ab41b012c457e1ecc3ee19e80c`, 0 import |
+| Storage | 12 anggota ter-link, 385 simbol dari kernel ter-resolve; arsip GPU 0 anggota |
+| Kernel collection | 135.102.464 byte, SHA-256 `a951ff56c5c43ad50a787b73b30312687543131da5dea92e1cd7afbad4ad1619`, `missing`/`stubbed` {}, 87 kext |
+| Batas prelink | `__TEXT` `0x190000`, sisa 10.208; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.406.720 |
+| Build kedua | SHA-256 dan UUID sama |
+
+### Percobaan 21 — 2026-11-12, commit `4b27695`, run [43150998287](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43150998287): kernel GPU pada input akhir sesi 9, reproducible
+
+`[kernel-gpu] [kernel-prelink] [kernel-repro]`, input kernel sama dengan percobaan 19–20 (setelah `patches/unixnu/0002` berubah, jadi tanggal build dan hash berbeda dari percobaan 17–18; kodenya sama).
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.263.616 byte, SHA-256 `4a6cd55e0da62e0bdb26b0404b00c7b00c9affd531054c92af8639220d91c3b9`, 0 import |
+| Arsip | Adreno650 29/29 dan libPipaGpu 2/2 anggota ter-link, storage 0; 398 simbol, 0 tak terdefinisi |
+| Kernel collection | 135.118.848 byte, SHA-256 `02de1343c98ed7131745fc9f2f9ee05e04ce3ad097ebac194228f5077554f05b`, `missing`/`stubbed` {}, `mapping_complete` true, 87 kext |
+| Batas prelink | `__TEXT` `0x188000`, sisa 42.976; `__DATA_CONST` sisa 918.568; `__TEXT_EXEC` sisa 5.341.184 |
+| Build kedua | SHA-256 dan UUID sama |
+| `PipaBacklight.c` | ter-compile, 7 simbol ada di kernel, tidak di-link |
+
+## Sesi 10: kernel gabungan UFS + Adreno650 dan jalur start board
+
+Perubahan input kernel: `zzzzd-pipa-board-start.patch` (rantai **123**: `bsd_init` memanggil `pipa_board_start` di belakang `XNU_PIPA_BOARD_START`), `patches/adreno650/0004` (server render per OS), `libPipaGpu.a` kini juga berisi `PipaBoardStart.c`, `PipaGop.cpp`, `GpuProbe.cpp` versi macOS dan `GpuFirmware.c`. Konfigurasi baru `pipa_macos26_ufs_gpu_defconfig` (`[kernel-ufs-gpu]`). `[kernel-repro]` kini juga mem-prelink ulang dan membandingkan link map, tabel simbol dan kernel collection (`scripts/repro_compare.py`).
+
+| Percobaan | Run | Commit | Berhenti di | Perbaikan |
+| --- | --- | --- | --- | --- |
+| 22 | [43167684313](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43167684313) | `ee79623` | `archive-10-build-pipa-gpu`: `PipaGop.cpp` (tipe `IOPlatformExpert` tak lengkap; `%u` untuk field `unsigned long` `PE_Video`) | header + format (`8708608`); builder mencoba semua sumber sebelum gagal |
+| 23 | [43168676072](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43168676072) | `8708608` | compile + link **berhasil** (0 import); prelink: `No room for 0x194000 bytes in __PRELINK_TEXT` (kurang `0x10c0`); cek integrasi menganggap `___ubsan_handle_add_overflow_minimal` hilang (definisi kernel-nya hidden); `nm` pada `TouchProbe.o` yang gagal compile | `-DMACH_ASSERT_EXPR_MAX=40` hanya untuk kernel gabungan; pencarian simbol kernel termasuk lokal; cek touch diperbaiki (`d8362c3`) |
+| 24 | [43170501593](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43170501593) | `d8362c3` | **semua langkah lulus** | — (touch: `-Wreorder-init-list` dari makro `IOMallocType` XNU, flag relaksasi dipindah ke belakang, `ccf2e57`) |
+| 25 | [43172672651](https://github.com/BxiiDN/macOS-Pad-6/actions/runs/43172672651) | `ccf2e57` | **semua langkah lulus**; input kernel sama dengan 24 | — |
+
+Hasil percobaan 24 dan 25 (identik):
+
+| | Hasil |
+| --- | --- |
+| Kernel native | 25.479.080 byte, SHA-256 `92d5a0d62f4cbb224d2b3fc7a14c39c221ef3f2adaef09a4a153ded158c7c887`, UUID `e39686803a0d3a78a1877eca9976b1a5`, 0 import |
+| Link map | storage 12/12, Adreno650 29/29, libPipaGpu 6/6 anggota; tidak ada duplicate symbol |
+| Simbol | storage 385, GPU 419 dari kernel; 0 tak terdefinisi; `bsd_init.o` memanggil `pipa_board_start` |
+| Kernel collection | 135.217.152 byte, SHA-256 `fbc82f2247ea5c2026759db4e67f908b7567755d5fbb6f7a68238e2c74db7671`, UUID `29f1b7a9e6a8f673fb8297457a4ba754`, `missing`/`stubbed` {}, `mapping_complete` true, 87 kext |
+| Batas prelink | `__TEXT` `0x190000`, sisa 10.208; `__DATA_CONST` sisa 902.184; `__TEXT_EXEC` sisa 5.242.880 |
+| Build kedua (dari nol, prelink kedua) | kernel native, UUID, link map (9.528.859 byte, SHA-256 `70bb0076…`), 26.078 simbol eksternal, kernel collection: **identik**, di kedua run |
+| Antar-run (24 vs 25) | kernel native dan kernel collection sama |
+
+Penghematan `__TEXT`: GpuProbe dan presenter menambah ±6,4 KB string dan konstanta ke kernel UFS, yang tinggal 10.208 byte sisa halaman. Ambang teks assert 40 (bukan 48) untuk kernel ini saja: pemeriksaan, trap dan file:line tetap. Alternatif memindah string board ke `__DATA_CONST` ditolak karena os_log membuang format yang tidak ada di `__TEXT` image-nya (`libkern/os/log.c` `resolve_dso`): log IOLog akan hilang dari unified log.
+
+Riset di run yang sama: `legacy_display_abi_probe.py` (lihat `docs/display-touch.md`) dan evaluasi compile touch (GENI SPI, NT36532, `TouchProbe.cpp`, `TouchState.cpp`: ter-compile; kurang `native_touch_firmware[_size]`).
+
+Kernel generik, UFS dan GPU tunggal belum dibangun ulang dengan input sesi 10 (rantai 123 menggeser nomor baris `bsd_init.c`, jadi hash-nya akan berubah walau kodenya tidak).

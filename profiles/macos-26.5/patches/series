@@ -1,4 +1,0 @@
-# macOS-Pad-6 patches for Tahoe 26.5 on SM8250, applied after UniXNU's series.
-# SPDX-License-Identifier: BSD-2-Clause-Patent
-xnu-12377/null-pac-armv82.patch
-xnu-12377/fge-armv82.patch

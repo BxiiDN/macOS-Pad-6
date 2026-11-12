@@ -1,0 +1,40 @@
+From: macOS-Pad-6 <noreply@anthropic.com>
+Subject: [PATCH] tests/test_vm: driver-allocated BOs are exclusive, as UniXNU/Adreno740 d834731
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+The fork's 1c4065c ("map owned and exclusive imported memory without alias scans") maps memory the driver
+allocated through the exclusive batch: NativeAdrenoVm::exclusivePages returns true for every non-imported BO,
+because such a BO owns its pages until its unmap has completed (the free waits for it), so no other mapping
+can alias them in another cache class. tests/test_vm.cpp was not updated: it forces two driver BOs onto the
+same physical page (fixture.next_physical) and still expects a different-class map of the second, and of a
+scattered BO over the same pages, to be refused with kIOReturnBadArgument. On arm64 the patched fork stopped
+there (known-fail of scripts/test_adreno650.py, line 190).
+
+Upstream Adreno740 made the same driver change and replaced these expectations in d834731 (2026-10-28) with
+the one below: the different-class map of a driver BO succeeds; imports keep the alias pass, which
+test_vm_alias covers. This takes upstream's block unchanged. It changes the test, not the driver: the state
+it sets up (two driver BOs on one page) cannot arise from the driver's allocator, and the hazard it would
+mean on hardware (one page under two memory attributes) is the allocator's invariant, not checked here.
+
+diff --git a/tests/test_vm.cpp b/tests/test_vm.cpp
+index 4dcca86..efca7f4 100644
+--- a/tests/test_vm.cpp
++++ b/tests/test_vm.cpp
+@@ -185,13 +185,9 @@ int main()
+         CHECK(!many.allocate(8192,40,false,8192)&&many.spanCount()==2);fixture.mode=Contiguous;
+         uint64_t a=0,b=0;CHECK(!s.vm.map(&first,0,0x800000,3,0,2,&a));
+         CHECK(!s.vm.map(&second,0,0x802000,1,0,2,&b));CHECK(!s.vm.unmap(b));
+-        const unsigned calls=f.calls;
+-        for(unsigned change=0;change<3;++change) {
+-            CHECK(s.vm.map(&second,0,0x802000,change==2?9:3,change==0?1:0,change==1?3:2,&b)==kIOReturnBadArgument);
+-            CHECK(!b&&!second.deviceReferences()&&f.calls==calls&&!s.vm.poisoned());
+-        }
+-        CHECK(s.vm.map(&many,0,0x802000,3,1,3,&b)==kIOReturnBadArgument);
+-        CHECK(!b&&!many.deviceReferences()&&f.calls==calls&&!s.vm.poisoned());
++        /* Driver-allocated pages are exclusive to their BO (exclusivePages): no cross-class alias pass runs for them, so a different
++         * class over the same pages maps. Imports keep the pass (test_vm_alias covers the index). */
++        CHECK(!s.vm.map(&second,0,0x802000,3,1,2,&b) && !s.vm.unmap(b));
+         CHECK(!s.vm.unmap(a)&&!first.release()&&!second.release()&&!many.release());
+         CHECK(!s.vm.detach()&&!s.tables.retireAfterQuiescence()&&!s.tables.release());
+         CHECK(fixture.live.empty()&&fixture.metadata.empty());

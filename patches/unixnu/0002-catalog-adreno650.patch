@@ -1,0 +1,46 @@
+UniXNU 3fd6a3c: catalog entry Adreno650 (xVanTuring/Adreno650, the SM8250 branch of Adreno740), gap G3 of macOS-Pad-6
+
+Format 2 selects drivers through components.toml, and the A650 fork had no entry, so a board could carry it only as a
+retained --local-module source and could not name it in [components] include. The entry pins the fork at 01db67e0,
+depends on the kits the pipa recipe links (AdrenoPM4, AdrenoFirmware, ArmSmmu4K; not Sm8550Platform: the A650 build
+leaves sheng's GMU platform, config and service out and uses the board package's A650 cold start instead), and builds
+with the device script build-adreno650.py (devices/pipa/scripts, the recipe of UniXNU-pipa format 1), whose archive is
+build/adreno650/libAdreno650.a. os_abi: the iPadOS 17 profile it ran under, and macOS 26.5, against whose xnu-12377
+kernel macOS-Pad-6's kernel step compiles and links it (arm64e, kernel-build attempts 17-18; with libPipaGpu.a for
+the hand-off and export symbols). verified_devices stays empty: no GPU result exists for macOS.
+
+Applied by macOS-Pad-6's scripts/pipa_unixnu.py to its UniXNU copy and meant as the upstream proposal. Resolution
+tested on the host (pipa_unixnu.py check, tests/test_unixnu_patches.py); the driver was not built.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+---
+diff --git a/components.toml b/components.toml
+index 8e9fb7d..1703543 100644
+--- a/components.toml
++++ b/components.toml
+@@ -98,6 +98,25 @@ outputs = ["build/adreno740/libAdreno740.a"]
+ legacy_name = "NativeAdreno"
+ legacy_outputs = { "build/native-adreno/libNativeAdreno.a" = "build/adreno740/libAdreno740.a" }
+ 
++[[component]]
++id = "Adreno650"
++kind = "driver"
++function = "A650 kernel GPU driver (a6xx with a GMU), the SM8250 branch of Adreno740"
++scope = "gpu"
++repository = "https://github.com/xVanTuring/Adreno650.git"
++revision = "01db67e0620fe0e70ab8cbce533cbdb1369f5922"
++path = "drivers/Adreno650"
++hardware = ["Adreno 650", "SM8250"]
++os_abi = ["ipados-17.7.11-21H461", "macos-26.5-25F71"]
++board_dependencies = ["GMU, SQE and zap firmware", "GPU power policy", "A650 cold start (board package A650Gmu.c)", "reserved memory"]
++verified_devices = []
++dependencies = ["AdrenoPM4", "AdrenoFirmware", "ArmSmmu4K"]
++source_files = ["NativeAdrenoGpuContext.cpp", "NativeAdrenoGmuContext.cpp", "NativeAdrenoVm.cpp", "NativeAdrenoSubmit.cpp"]
++runtime_identifiers = ["NativeAdreno", "NativeAdrenoGpuContext.cpp", "NativeAdrenoGmuContext.cpp"]
++build_stage = "kernel"
++build = ["build-adreno650.py"]
++outputs = ["build/adreno650/libAdreno650.a"]
++
+ [[component]]
+ id = "AdrenoMetal"
+ repository_id = 1426849428

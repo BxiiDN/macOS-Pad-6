@@ -1,0 +1,40 @@
+From: macOS-Pad-6 <noreply@anthropic.com>
+Subject: [PATCH] NativeUfs: kernel memory interfaces of xnu-12377, as UniXNU/ShengUfs 99d8bcd
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+xVanTuring/PipaUfs 5c64c01 (feeds.toml ShengUfs) still uses the vm_kern.h/vm_map.h interfaces of the iPadOS 17
+kernel. Built against xnu-12377.121.6 (the macOS 26.5 profile, source storage recipe, kernel-build run
+43105063854) it stops at kma_flags_t/KMA_KOBJECT/KMA_DATA (now in vm/vm_kern_xnu.h), kmem_free (same) and
+vm_map_protect (gone; mach_vm_protect). This takes the same two changes the catalog's ShengUfs pin made:
+include vm/vm_kern_xnu.h when it exists, and mach_vm_protect(map, addr, size, set_maximum = TRUE, VM_PROT_READ),
+the call vm_map_protect(map, start, end, VM_PROT_READ, set_max = TRUE) made. Behaviour unchanged; the policy
+storage stays read only after it is written. On pipa this path is not reached (no root policies).
+
+diff --git a/NativeUfs.cpp b/NativeUfs.cpp
+index 6301862..62364dd 100644
+--- a/NativeUfs.cpp
++++ b/NativeUfs.cpp
+@@ -7,6 +7,11 @@
+ #include <libkern/crypto/sha2.h>
+ #include <vm/vm_kern.h>
+ #include <vm/vm_map.h>
++/* Newer XNU keeps the kernel memory and map protection interfaces in these headers. */
++#if __has_include(<vm/vm_kern_xnu.h>)
++#include <vm/vm_kern_xnu.h>
++#endif
++#include <mach/mach_vm.h>
+ #include <sys/param.h>
+ #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+ #include "verified_root.h"
+@@ -1898,8 +1903,8 @@ bool NativeUfsBlock::configureVerification ()
+   uint8_t *key = reinterpret_cast<uint8_t *> (verifiedStorage + tableBytes);
+   memcpy (key, verified_root_key, VR_KEY_BYTES);
+   gRootDiagnostic.stage = "policy read-only protection";
+-  if (vm_map_protect (kernel_map, verifiedStorage, verifiedStorage + verifiedStorageBytes,
+-                      VM_PROT_READ, TRUE) != KERN_SUCCESS) {
++  if (mach_vm_protect (kernel_map, verifiedStorage, verifiedStorageBytes,
++                       TRUE, VM_PROT_READ) != KERN_SUCCESS) {
+     return false;
+   }
+   gRootDiagnostic.stage = "owner signature and hash table";

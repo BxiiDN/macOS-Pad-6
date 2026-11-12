@@ -5,11 +5,12 @@
 
 Profiles:
   macos-27.3   UniXNU's arm64e arch series + its macos-27.3-26C5035r OS series, as published
-  tahoe-26.5   UniXNU's arm64e arch series, this repository's SM8250 SoC series
-               (profiles/macos-26.5/soc-sm8250, or --soc), UniXNU's macOS OS series minus the
-               patches that add Darwin 26 (macOS 27) system calls and KPIs, which
-               xnu-12377.121.6 (the macOS 26.5 kernel source) must not get, then
-               profiles/macos-26.5/patches/series
+  tahoe-26.5   the series devices/pipa/board.toml names for macos-26.5-25F71, in its order:
+               UniXNU's arm64e arch series, devices/pipa/patches/xnu-12377/soc (the arm64e SM8250
+               layer), the OS series of profiles/macos-26.5/unixnu/macos-26.5-25F71 (UniXNU's macOS
+               series without the patches that add Darwin 26 system calls and KPIs, which
+               xnu-12377.121.6, the macOS 26.5 kernel source, must not get), then
+               devices/pipa/patches/xnu-12377/series (the ARMv8.2 layer)
 
 Each patch is applied with `git apply` in order to a throw-away clone; the
 report lists every patch with ok/FAIL. Nothing is built.
@@ -51,27 +52,49 @@ def read_series(series, base_arch, base_os):
     return out
 
 
+PIPA = ROOT / "devices/pipa/patches/xnu-12377"
+PROFILE_26 = ROOT / "profiles/macos-26.5/unixnu/macos-26.5-25F71"
+
+
+def resolve_series(series, roots, virtual_dir=None):
+    """Lines of a UniXNU series: "arch:" and "os:" select a profile root, other lines are relative to
+    the series' directory (virtual_dir when the series is read from outside the UniXNU checkout)."""
+    out = []
+    for line in series.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        prefix, sep, rest = line.partition(":")
+        if sep and prefix in roots:
+            out.append((roots[prefix] / rest).resolve())
+        else:
+            out.append(((virtual_dir or series.parent) / line).resolve())
+    return out
+
+
 def chain(unixnu, profile, soc=None, soc_dir=None):
-    """The ordered patch list. soc is a UniXNU-<soc>-common checkout; soc_dir a
-    directory holding a SoC series directly. tahoe-26.5 defaults to this
-    repository's SM8250 series (pipa)."""
+    """The ordered patch list. soc is a UniXNU-<soc>-common checkout whose patches/xnu-12377
+    series replaces the default SoC layer; soc_dir a directory holding a series directly."""
     arch_dir = unixnu / "profiles/arch/arm64e"
     arch = read_series(arch_dir / "patches/xnu/series", arch_dir / "patches/xnu", arch_dir / "patches/xnu")
-    os_dir = unixnu / MACOS27 / "patches/xnu"
-    ospatches = read_series(os_dir / "series", arch_dir, os_dir)
     if soc is not None:
         soc_dir = soc / "patches/xnu-12377"
-    elif soc_dir is None and profile == "tahoe-26.5":
-        soc_dir = ROOT / "profiles/macos-26.5/soc-sm8250"
-    socp = [("soc", p) for p in read_series(soc_dir / "series", soc_dir, soc_dir)] if soc_dir else []
     if profile == "macos-27.3":
+        os_dir = unixnu / MACOS27 / "patches/xnu"
+        ospatches = read_series(os_dir / "series", arch_dir, os_dir)
+        socp = [("soc", p) for p in read_series(soc_dir / "series", soc_dir, soc_dir)] if soc_dir else []
         return [("unixnu-arch", p) for p in arch] + socp + [("unixnu-os", p) for p in ospatches]
     if profile == "tahoe-26.5":
-        mine_dir = ROOT / "profiles/macos-26.5/patches"
-        mine = read_series(mine_dir / "series", mine_dir, mine_dir)
-        return ([("unixnu-arch", p) for p in arch] + socp +
-                [("unixnu-os", p) for p in ospatches if p.name not in DARWIN26_ONLY] +
-                [("macos-pad-6", p) for p in mine])
+        soc_dir = soc_dir or PIPA / "soc"
+        socp = resolve_series(soc_dir / "series", {})
+        # The profile is installed as profiles/os/macos-26.5-25F71 of the UniXNU checkout; its series
+        # names UniXNU's macOS patches relative to that place.
+        installed = unixnu / "profiles/os" / PROFILE_26.name / "patches/xnu"
+        ospatches = resolve_series(PROFILE_26 / "patches/xnu/series", {"arch": arch_dir, "os": installed.parent.parent},
+                                   virtual_dir=installed)
+        device = resolve_series(PIPA / "series", {})
+        return ([("unixnu-arch", p) for p in arch] + [("soc", p) for p in socp] +
+                [("unixnu-os", p) for p in ospatches] + [("pipa", p) for p in device])
     raise SystemExit(f"unknown profile {profile}")
 
 

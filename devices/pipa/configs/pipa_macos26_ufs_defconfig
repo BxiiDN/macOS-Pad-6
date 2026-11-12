@@ -1,0 +1,22 @@
+# pipa_macos26_defconfig plus pipa's source storage (G2), for the kernel integration build. pipa only: no other board
+# reads this file. Everything of pipa_macos26_defconfig holds (its comments say why); this adds two things:
+#  - XNU_PIPA_SOURCE_STORAGE=1 in the compiler flags, which compiles the call of zzzzc-pipa-source-storage-start.patch;
+#  - libShengSourceStorage.a force-loaded into the kernel link. The archive is the board's [kernel] archives entry
+#    component:ShengUfs (PipaUfs 5c64c01 + patches/shengufs, the package's five storage sources, UniXNU's RamBlock and
+#    VerifiedRoot), built with patches/unixnu 0001 (SM8250) and 0003 (no root: no policies, an all-zero anchor).
+# Not set, on purpose: XNU_NATIVE_UFS (an IOKit personality that would start NativeUfs by matching), XNU_SOURCE_STORAGE
+# and the XNU_OWNER_* switches (the owner-verified root chain, which mounts a root from userdata windows),
+# XNU_NATIVE_RAM_BLOCK. At run time the runtime does nothing unless native-source-storage=1 and native-ufs-probe is a
+# read-only inspection (PipaStorageGuard.h); no root is ever taken from Android's userdata and nothing is written to UFS.
+# A kernel built from this file has been compiled and linked on the macOS runner only (docs/kernel-build.md); it has
+# not run anywhere.
+#
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+
+CONFIG_XNU_BUILD_ARCHIVES=y
+CONFIG_XNU_CRYPTO_BOOTSTRAP="source"
+CONFIG_XNU_DT_PANIC_REGION=y
+CONFIG_XNU_KERNEL_CHAINED_FIXUPS=y
+CONFIG_XNU_ARMVIRT_PLATFORM=n
+CONFIG_XNU_EXTRA_CFLAGS="-Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding -fmacro-prefix-map={tree}/.cache/xnu-work/= -fmacro-prefix-map={tree}/= -DXNU_PIPA_SOURCE_STORAGE=1"
+CONFIG_XNU_EXTRA_LD_ARCHIVES="-Wl,-map,{tree}/build/kernel-link.map -Wl,-force_load,{tree}/build/sheng-source-storage/libShengSourceStorage.a"

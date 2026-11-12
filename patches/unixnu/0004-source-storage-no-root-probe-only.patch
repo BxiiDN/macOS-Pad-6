@@ -1,0 +1,26 @@
+UniXNU 3fd6a3c: a source storage without a root is built probe-only, gap G2 of macOS-Pad-6
+
+With [storage] root = "none" (patches/unixnu/0003) the recipe already links no root policies, so NativeUfs can
+publish no verified root window; its block devices and root publication (NativeUfsBlock, startRoot, the media report
+and the raw userdata block test) are then code such a board never runs. NativeUfs.cpp has a switch for exactly that,
+NATIVE_UFS_PROBE_ONLY ("the block device and root publication pull in IOStorageFamily/VerifiedRoot; a probe-only
+build keeps the controller probes"); this sets it when UNIXNU_SOURCE_STORAGE_ROOT=none. Boards with a root are
+unchanged. For macOS-Pad-6 it keeps the code that could publish userdata out of the kernel entirely, and makes the
+archive smaller: the pipa kernel with it linked missed the macOS 26.5 collection's __PRELINK_TEXT hole by 6,176
+bytes (kernel-build run 43136731212). Applies after 0001 and 0003.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+---
+--- a/scripts/build-sheng-source-storage.py
++++ b/scripts/build-sheng-source-storage.py
+@@ -203,6 +203,10 @@
+              '-DNATIVE_VERIFIED_BLOCK_MULTI_POLICY=1', '-DNATIVE_VERIFIED_POLICY_HANDOFF=1']
+     # NativeUfs.cpp selects its controller (compatible string, GCC and SMMU layout) by NATIVE_UFS_<SoC>.
+     flags += ufs_soc.defines(os.environ.get('UNIXNU_SOC'))
++    if no_root:
++        # No root from userdata: NativeUfs is built probe-only, without the block devices and the root window
++        # publication (NativeUfsBlock, startRoot, the userdata block test), which such a board never uses.
++        flags.append('-DNATIVE_UFS_PROBE_ONLY=1')
+     if os.environ.get('UNIXNU_XNU_TARGET') == 'macosx':
+         # The kernel keeps the iOS target triple, so TargetConditionals gives TARGET_OS_OSX 0. The macOS
+         # IOStorageFamily has the TARGET_OS_OSX members (doLockUnlockMedia, reportLockability,

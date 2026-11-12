@@ -1,0 +1,97 @@
+Adreno650 01db67e0 tests: SMMU register peers accept TLBIVAL (64-bit) and nothing else 64-bit
+
+The fork merged UniXNU/ArmSmmu4K main (6d4441d), whose live update drops a small unmap page by page:
+ArmSmmu4KLiveUpdateContextBatch -> update() -> ArmSmmu4KSyncContextTlbPages -> 64-bit write of TLBIVAL at
+context bank + 0x620 (traced with gdb in a host build: NativeAdrenoVm::unmap, at = 0x22620). The fork's tests
+were not updated with that merge: their peers still CHECK(0) on any 64-bit write, so test_gmumap and test_vm stop
+at the first unmap. Upstream Adreno740 (122a8f1) changed the same peers to store 64-bit writes. These peers are
+stricter than upstream: a 64-bit write is accepted only at +0x620 of a context bank (offset >= 0x20000).
+
+Test fixture only; no driver source changes. Applied by scripts/test_adreno650.py (patches/adreno650/series).
+SPDX-License-Identifier: BSD-2-Clause-Patent
+---
+diff --git a/tests/test_client.cpp b/tests/test_client.cpp
+index 2de841d..e1d2fbc 100644
+--- a/tests/test_client.cpp
++++ b/tests/test_client.cpp
+@@ -33,7 +33,11 @@ static int mread64(void *c,size_t at,uint64_t *v)
+ {CHECK(c==&mf && at%8==0 && at<=SMMU_BYTES-8);if(mevent())return 1;std::memcpy(v,mmio+at/4,8);return 0;}
+ static int mwrite32(void *c,size_t at,uint32_t v)
+ {CHECK(c==&mf && at%4==0 && at<=SMMU_BYTES-4);int f=mevent();if(f && !mf.after)return 1;mmio[at/4]=v;return f;}
+-static int mwrite64(void *c,size_t at,uint64_t v){(void)c;(void)at;(void)v;CHECK(0);return 1;}
++static int mwrite64(void *c,size_t at,uint64_t v)
++{CHECK(c==&mf && at%8==0 && at<=(SMMU_BYTES)-8);
++ /* Only TLBIVAL (context bank + 0x620): ArmSmmu4K drops small unmaps page by page (ArmSmmu4KSyncContextTlbPages). */
++ CHECK(at>=0x20000 && (at&0xfff)==0x620);
++ int fail=mevent();if(fail && !mf.after)return 1;std::memcpy(mmio+at/4,&v,8);return fail;}
+ static int mbarrier(void *c){CHECK(c==&mf);return mevent();}
+ struct CpPeer {
+     std::vector<uint32_t> regs,writes;
+diff --git a/tests/test_gmumap.cpp b/tests/test_gmumap.cpp
+index bd3a46a..d105433 100644
+--- a/tests/test_gmumap.cpp
++++ b/tests/test_gmumap.cpp
+@@ -30,7 +30,11 @@ static int read64(void *c,size_t at,uint64_t *v)
+ {CHECK(c==&mf && at%8==0 && at<=SMMU_BYTES-8);if(event())return 1;std::memcpy(v,mmio+at/4,8);return 0;}
+ static int write32(void *c,size_t at,uint32_t v)
+ {CHECK(c==&mf && at%4==0 && at<=SMMU_BYTES-4);int f=event();if(f && !mf.after)return 1;mmio[at/4]=v;return f;}
+-static int write64(void *c,size_t at,uint64_t v){(void)c;(void)at;(void)v;CHECK(0);return 1;}
++static int write64(void *c,size_t at,uint64_t v)
++{CHECK(c==&mf && at%8==0 && at<=(SMMU_BYTES)-8);
++ /* Only TLBIVAL (context bank + 0x620): ArmSmmu4K drops small unmaps page by page (ArmSmmu4KSyncContextTlbPages). */
++ CHECK(at>=0x20000 && (at&0xfff)==0x620);
++ int fail=event();if(fail && !mf.after)return 1;std::memcpy(mmio+at/4,&v,8);return fail;}
+ static int barrier(void *c){CHECK(c==&mf);return event();}
+ int main()
+ {
+diff --git a/tests/test_submit.cpp b/tests/test_submit.cpp
+index 1701e30..7bca9ca 100644
+--- a/tests/test_submit.cpp
++++ b/tests/test_submit.cpp
+@@ -33,7 +33,11 @@ static int mread64(void *c,size_t at,uint64_t *v)
+ {CHECK(c==&mf && at%8==0 && at<=SMMU_BYTES-8);if(mevent())return 1;std::memcpy(v,mmio+at/4,8);return 0;}
+ static int mwrite32(void *c,size_t at,uint32_t v)
+ {CHECK(c==&mf && at%4==0 && at<=SMMU_BYTES-4);int f=mevent();if(f && !mf.after)return 1;mmio[at/4]=v;return f;}
+-static int mwrite64(void *c,size_t at,uint64_t v){(void)c;(void)at;(void)v;CHECK(0);return 1;}
++static int mwrite64(void *c,size_t at,uint64_t v)
++{CHECK(c==&mf && at%8==0 && at<=(SMMU_BYTES)-8);
++ /* Only TLBIVAL (context bank + 0x620): ArmSmmu4K drops small unmaps page by page (ArmSmmu4KSyncContextTlbPages). */
++ CHECK(at>=0x20000 && (at&0xfff)==0x620);
++ int fail=mevent();if(fail && !mf.after)return 1;std::memcpy(mmio+at/4,&v,8);return fail;}
+ static int mbarrier(void *c){CHECK(c==&mf);return mevent();}
+ /* CP register peer. */
+ struct CpPeer {
+diff --git a/tests/test_userclient.cpp b/tests/test_userclient.cpp
+index aa7c78a..dc64846 100644
+--- a/tests/test_userclient.cpp
++++ b/tests/test_userclient.cpp
+@@ -34,7 +34,11 @@ static int mread64(void *c,size_t at,uint64_t *v)
+ {CHECK(c==&mf && at%8==0 && at<=SMMU_BYTES-8);if(mevent())return 1;std::memcpy(v,mmio+at/4,8);return 0;}
+ static int mwrite32(void *c,size_t at,uint32_t v)
+ {CHECK(c==&mf && at%4==0 && at<=SMMU_BYTES-4);int f=mevent();if(f && !mf.after)return 1;mmio[at/4]=v;return f;}
+-static int mwrite64(void *c,size_t at,uint64_t v){(void)c;(void)at;(void)v;CHECK(0);return 1;}
++static int mwrite64(void *c,size_t at,uint64_t v)
++{CHECK(c==&mf && at%8==0 && at<=(SMMU_BYTES)-8);
++ /* Only TLBIVAL (context bank + 0x620): ArmSmmu4K drops small unmaps page by page (ArmSmmu4KSyncContextTlbPages). */
++ CHECK(at>=0x20000 && (at&0xfff)==0x620);
++ int fail=mevent();if(fail && !mf.after)return 1;std::memcpy(mmio+at/4,&v,8);return fail;}
+ static int mbarrier(void *c){CHECK(c==&mf);return mevent();}
+ struct CpPeer {
+     std::vector<uint32_t> regs,writes;
+diff --git a/tests/test_vm.cpp b/tests/test_vm.cpp
+index 4d77b8d..4dcca86 100644
+--- a/tests/test_vm.cpp
++++ b/tests/test_vm.cpp
+@@ -38,7 +38,11 @@ static int write32(void *cookie,size_t at,uint32_t v)
+     int fail=event();if(fail && !f.after)return 1;
+     memory[at/4]=v;return fail;
+ }
+-static int write64(void *cookie,size_t at,uint64_t v){(void)at;(void)v;(void)cookie;CHECK(0);return 1;}
++static int write64(void *cookie,size_t at,uint64_t v)
++{CHECK(cookie==&f && at%8==0 && at<=(BYTES)-8);
++ /* Only TLBIVAL (context bank + 0x620): ArmSmmu4K drops small unmaps page by page (ArmSmmu4KSyncContextTlbPages). */
++ CHECK(at>=0x20000 && (at&0xfff)==0x620);
++ int fail=event();if(fail && !f.after)return 1;std::memcpy(memory+at/4,&v,8);return fail;}
+ static int barrier(void *cookie){CHECK(cookie==&f);return event();}
+ struct Fixture {
+     NativeAdrenoMemory tables,object;

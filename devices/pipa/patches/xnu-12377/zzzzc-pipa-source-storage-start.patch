@@ -1,0 +1,36 @@
+Start pipa's source storage runtime after vfsinit, behind XNU_PIPA_SOURCE_STORAGE.
+
+UniXNU-sheng's source-storage-runtime.patch makes the same call through a weak import; on this kernel a weak
+reference to an absent definition is a chained-fixup import, which XnuPrelink refuses (kernel-build run
+42991705340, see zzzz-pipa-macos-absent-features.patch). So the call is strong and compiled only when
+XNU_PIPA_SOURCE_STORAGE is set, which pipa_macos26_ufs_defconfig does together with force-loading
+libShengSourceStorage.a. pipa_macos26_defconfig does not set it: that kernel is unchanged by this patch.
+
+What the runtime does is decided by devices/pipa/package/PipaStorageGuard.h: nothing unless
+native-source-storage=1 and native-ufs-probe is one of the read-only inspections (2, 6, 7, 8); it refuses every
+root, store, log and publishing mode, so no root comes from Android's userdata and nothing is written to UFS.
+
+SPDX-License-Identifier: BSD-2-Clause-Patent
+
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+index d9f40e1..780c612 100644
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -794,6 +794,17 @@ bsd_init(void)
+ 	/* Initialize the file systems. */
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	vfsinit();
++#if defined(XNU_PIPA_SOURCE_STORAGE) && XNU_PIPA_SOURCE_STORAGE
++	/*
++	 * macOS-Pad-6 (pipa): the source storage runtime (devices/pipa/package/SourceStorage.cpp, linked from
++	 * libShengSourceStorage.a). It returns at once unless native-source-storage=1 and a read-only inspection of
++	 * native-ufs-probe is asked for (PipaStorageGuard.h); it never mounts a root and never writes UFS. A strong
++	 * reference: the archive is force-loaded by the defconfig that defines this switch, and a weak one would be a
++	 * chained-fixup import XnuPrelink refuses.
++	 */
++	extern void native_source_storage_start(void);
++	native_source_storage_start();
++#endif
+ #if DEVELOPMENT || DEBUG
+ 	native_apfs_load_probe();
+ 	native_mobile_graphics_load_probe();
